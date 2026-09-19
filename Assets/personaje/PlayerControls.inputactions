@@ -63,7 +63,7 @@
                 {
                     "name": "down",
                     "id": "1816b3f0-b0a3-4155-85c4-666bd357164a",
-                    "path": "<AndroidJoystick>/stick/down",
+                    "path": "<Keyboard>/s",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -74,7 +74,7 @@
                 {
                     "name": "left",
                     "id": "096bfa87-4a42-4e4e-8127-1b80212a763d",
-                    "path": "<SwitchProGamepadiOS>/buttonEast",
+                    "path": "<Keyboard>/a",
                     "interactions": "",
                     "processors": "",
                     "groups": "",

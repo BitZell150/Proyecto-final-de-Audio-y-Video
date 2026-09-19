@@ -5,9 +5,10 @@ using UnityEngine.InputSystem;
 public class PlayerMovement : MonoBehaviour
 {
     public CharacterController controller;
-    public float speed = 12f;
+    public Animator animator; 
+    public float speed = 6f;
     public float gravity = -9.81f;
-    public float jumpHeight = 3f;
+    public float jumpHeight = 0.5f;
 
     public Transform groundCheck;
     public float groundDistance = 0.4f;
@@ -22,14 +23,12 @@ public class PlayerMovement : MonoBehaviour
 
     void OnEnable()
     {
-        // Activa las acciones cuando el script está habilitado
         moveAction.action.Enable();
         jumpAction.action.Enable();
     }
 
     void OnDisable()
     {
-        // Desactiva las acciones para liberar memoria cuando el script se apaga
         moveAction.action.Disable();
         jumpAction.action.Disable();
     }
@@ -43,16 +42,26 @@ public class PlayerMovement : MonoBehaviour
             velocity.y = -2f;
         }
 
-        // Leer movimiento como un Vector2 (X, Y)
         Vector2 inputMove = moveAction.action.ReadValue<Vector2>();
         Vector3 move = transform.right * inputMove.x + transform.forward * inputMove.y;
         
         controller.Move(move * speed * Time.deltaTime);
 
-        // Leer salto como un botón pulsado en este frame
+        // Enviar la magnitud de la entrada (0 a 1) al Blend Tree del Animator
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", inputMove.magnitude);
+        }
+
         if (jumpAction.action.WasPressedThisFrame() && isGrounded)
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            
+            // Activar la animación de salto
+            if (animator != null)
+            {
+                animator.SetTrigger("Jump");
+            }
         }
 
         velocity.y += gravity * Time.deltaTime;
