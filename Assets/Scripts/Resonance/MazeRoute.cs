@@ -28,6 +28,11 @@ namespace Resonance
         /// <summary>Primer punto de la ruta (plano XZ). Válido tras Rebuild().</summary>
         public Vector3 StartPoint => (pts != null && pts.Length > 0) ? pts[0] : transform.position;
 
+        public int WaypointCount => pts == null ? 0 : pts.Length;
+
+        /// <summary>Distancia (m) acumulada desde el primer waypoint hasta el waypoint i.</summary>
+        public float CumulativeDistance(int i) => cum[Mathf.Clamp(i, 0, cum.Length - 1)];
+
         void Awake() => Rebuild();
 
         public void Rebuild()

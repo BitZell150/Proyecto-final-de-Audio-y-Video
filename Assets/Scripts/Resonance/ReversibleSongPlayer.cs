@@ -5,8 +5,8 @@ namespace Resonance
 {
     /// <summary>
     /// Reproduce UNA canción completa hacia delante o hacia atrás con un único AudioSource.
-    /// Nunca se llama a Stop(): la dirección y velocidad se controlan con AudioSource.pitch
-    /// (positivo = adelante, negativo = atrás). La posición se lee/escribe con timeSamples.
+    /// La dirección y velocidad se controlan con AudioSource.pitch (positivo = adelante, negativo = atrás).
+    /// Con velocidad 0 el AudioSource se PAUSA: la posición queda exactamente donde estaba.
     ///
     /// Requisitos del AudioClip (Import Settings):
     ///   Load Type = Decompress On Load, Preload Audio Data = ON, NO usar Streaming.
@@ -40,12 +40,14 @@ namespace Resonance
         float currentRate;
         float rateVelocity;
         bool running;
+        bool paused;
         bool endReported;
 
         public float Length => clip != null ? clip.length : 0f;
         public float CurrentTime => (running && clip != null) ? (float)source.timeSamples / clip.frequency : 0f;
         public float CurrentRate => currentRate;
         public bool IsRunning => running;
+        public bool IsPaused => paused;
 
         void Awake()
         {
@@ -77,16 +79,17 @@ namespace Resonance
             rateVelocity = 0f;
             desiredRate = 1f;
             endReported = false;
+            paused = false;
             running = true;
         }
 
-        /// <summary>Velocidad deseada: 1 = normal, -1 = marcha atrás, 0 = pausa suave.</summary>
+        /// <summary>Velocidad deseada: 1 = normal, -1 = marcha atrás, 0 = pausa (posición exacta).</summary>
         public void SetDesiredRate(float rate)
         {
             desiredRate = Mathf.Clamp(rate, -maxAbsRate, maxAbsRate);
         }
 
-        /// <summary>Salto duro de posición. Puede producir un clic: úsalo solo para inicializar o corregir errores grandes.</summary>
+        /// <summary>Salto duro de posición. Puede producir un clic: úsalo solo para inicializar.</summary>
         public void Seek(float timeSeconds)
         {
             if (!running) return;
@@ -122,6 +125,26 @@ namespace Resonance
             else if (endReported && t < Length - edgeMarginSeconds - 0.5f)
             {
                 endReported = false;
+            }
+
+            // Velocidad 0: pausa real, así la posición se conserva exactamente.
+            if (Mathf.Abs(target) < 0.001f && Mathf.Abs(currentRate) < 0.02f)
+            {
+                currentRate = 0f;
+                rateVelocity = 0f;
+                if (!paused)
+                {
+                    source.volume = 0f;
+                    source.Pause();
+                    paused = true;
+                }
+                return;
+            }
+
+            if (paused)
+            {
+                source.UnPause();
+                paused = false;
             }
 
             ApplyPitch(currentRate);

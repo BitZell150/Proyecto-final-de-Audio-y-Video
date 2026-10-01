@@ -1,6 +1,6 @@
 # Resonance — Documentación técnica del estado actual
 
-Sistema de música adaptativa para un laberinto 3D en Unity. Una única canción completa representa el progreso del jugador por la ruta correcta: avanza cuando el jugador avanza, se distorsiona cuando se desvía y puede reproducirse hacia atrás cuando el jugador retrocede por la ruta correcta.
+Sistema de música adaptativa para un laberinto 3D en Unity. Una única canción completa funciona como un reloj musical del recorrido: empieza al llegar al primer waypoint, avanza a velocidad normal mientras el jugador se mueve y puede reproducirse hacia atrás cuando el jugador retrocede por la ruta correcta. La ruta guarda el segundo de canción asociado a los waypoints alcanzados para que el reverse vuelva de forma continua al tiempo registrado.
 
 > **Estado:** prototipo funcional. Todo el código fue escrito sin poder compilarlo ni ejecutarlo en Unity en el entorno donde se generó; los valores por defecto hay que afinarlos a oído. Ver la sección [Limitaciones y problemas conocidos](#14-limitaciones-y-problemas-conocidos).
 
@@ -13,7 +13,7 @@ Sistema de música adaptativa para un laberinto 3D en Unity. Una única canción
 3. [Arquitectura general](#3-arquitectura-general)
 4. [Waypoints y la ruta correcta](#4-waypoints-y-la-ruta-correcta)
 5. [Detección de ruta correcta / incorrecta](#5-detección-de-ruta-correcta--incorrecta)
-6. [Sistema de progreso](#6-sistema-de-progreso)
+6. [Sistema de progreso y reloj musical](#6-sistema-de-progreso-y-reloj-musical)
 7. [La canción: reproducción hacia delante y hacia atrás](#7-la-canción-reproducción-hacia-delante-y-hacia-atrás)
 8. [Audio Mixer y distorsión](#8-audio-mixer-y-distorsión)
 9. [Comportamiento del sistema](#9-comportamiento-del-sistema)
@@ -22,7 +22,7 @@ Sistema de música adaptativa para un laberinto 3D en Unity. Una única canción
 12. [Cómo se conecta todo en Unity](#12-cómo-se-conecta-todo-en-unity)
 13. [Configuración y cómo modificar el sistema](#13-configuración-y-cómo-modificar-el-sistema)
 14. [Limitaciones y problemas conocidos](#14-limitaciones-y-problemas-conocidos)
-15. [Alternativas discutidas (NO implementadas)](#15-alternativas-discutidas-no-implementadas)
+15. [Decisiones incorporadas](#15-decisiones-incorporadas)
 
 ---
 
@@ -46,7 +46,7 @@ El trabajo se ha centrado exclusivamente en el sistema de reproducción de la ca
 |---|---|
 | `ReversibleSongPlayer` | Reproduce la canción completa hacia delante o hacia atrás con un único `AudioSource`. |
 | `MazeRoute` | Representa la ruta correcta como una línea de waypoints y calcula el progreso del jugador sobre ella. |
-| `ResonanceMusicDirector` | Cerebro: decide en cada frame la velocidad de reproducción y el nivel de distorsión. |
+| `ResonanceMusicDirector` | Cerebro: controla el reloj musical, registra los tiempos de los waypoints, decide el reverse y calcula la distorsión. |
 | `MusicDegradation` | Traduce un valor 0..1 de "distorsión" a varios parámetros del AudioMixer. |
 | `SongPlayerTester` | Herramienta de prueba para validar el rewind sin laberinto. |
 | `AudioMixer` (`MainMixer`) | Contiene los efectos que degradan la música. |
@@ -63,11 +63,12 @@ Posición del jugador
             │   progreso (m a lo largo de la ruta) + distancia lateral (m)
             ▼
      ResonanceMusicDirector
-            ├─► velocidad de reproducción deseada (+ / − / 0) ─► ReversibleSongPlayer ─► AudioSource.pitch
-            └─► "wrongness" 0..1 (distancia a la ruta) ───────► MusicDegradation ─────► AudioMixer
+            ├─► registra el tiempo por waypoint y controla el reloj
+            ├─► velocidad deseada (+1 / −variable / 0) ─► ReversibleSongPlayer ─► AudioSource.pitch
+            └─► "wrongness" 0..1 (distancia a la ruta) ─► MusicDegradation ─────► AudioMixer
 ```
 
-Idea clave: **el director nunca salta a una posición de la canción: calcula una velocidad.** La música se desplaza por su línea de tiempo con `pitch` positivo (adelante) o negativo (atrás), de modo que el movimiento siempre es continuo.
+Idea clave: **la canción es el reloj del recorrido.** El director no mapea continuamente metros a segundos ni hace `Seek` durante el juego. Al avanzar guarda el tiempo actual en cada waypoint; al retroceder calcula el tiempo esperado interpolando los registros y ajusta suavemente la velocidad hasta llegar a él.
 
 Orden de ejecución por frame (fijado con `[DefaultExecutionOrder]` para evitar un frame de desfase):
 
@@ -104,46 +105,36 @@ La ruta correcta se define con **waypoints**: objetos vacíos colocados en orden
 
 **Ventana de búsqueda.** Solo se consideran tramos dentro de `[último progreso − searchWindow, último progreso + searchWindow]` (15 m por defecto). Así un pasillo contiguo, al otro lado de una pared, no se confunde con otra parte de la ruta.
 
-**Estados** del director (`RouteState`):
+**Estados** del director (`MusicState`):
 
 | Estado | Significado |
 |---|---|
 | `Arming` | El jugador aún no ha llegado al primer waypoint. No suena nada. |
-| `OnRoute` | El jugador está en la ruta correcta. |
-| `OffRoute` | El jugador se ha desviado. |
+| `Advancing` | El jugador se mueve por la ruta. La canción avanza a 1x. |
+| `Stopped` | El jugador está en la ruta, pero por debajo de `minMoveSpeed`. La canción queda pausada. |
+| `Retreating` | El jugador retrocede lo suficiente y durante el tiempo necesario. La canción vuelve hacia el tiempo registrado. |
+| `OffRoute` | El jugador está fuera de la ruta. La canción solo avanza mientras se mueve. |
+| `Completed` | Se alcanzó el último waypoint. Se dispara `onMazeCompleted` y la canción continúa hasta terminar. |
+| `TimeUp` | La canción llegó al final antes de completar la ruta. Se dispara `onTimeUp` y se detiene el sistema. |
 
-**Histéresis.** Para evitar parpadeos entre `OnRoute` y `OffRoute` se usan dos radios distintos:
+**Histéresis.** Para evitar parpadeos entre dentro y fuera de la ruta se usan dos radios distintos:
 
-- Se **sale** de la ruta cuando `lateral > routeLeaveRadius` (2.5 m por defecto).
-- Se **vuelve** a la ruta cuando `lateral ≤ routeEnterRadius` (1.5 m por defecto).
+- Se **sale** de la ruta cuando `lateral > exitRadius` (3.25 m por defecto).
+- Se **vuelve** a la ruta cuando `lateral ≤ insideRadius` (2.25 m por defecto).
 
-**Importante:** el estado `OnRoute/OffRoute` decide la lógica de la *canción*. La *distorsión* **no** depende del estado: se calcula directamente de la distancia lateral en cada frame (sección 8). Por eso la distorsión responde de inmediato y sin histéresis.
+**Importante:** el estado dentro/fuera de la ruta decide la lógica de la *canción*. La *distorsión* **no** depende de ese estado: se calcula directamente de la distancia lateral en cada frame (sección 8). Por eso la distorsión responde de inmediato y sin histéresis.
 
 ---
 
-## 6. Sistema de progreso
+## 6. Sistema de progreso y reloj musical
 
-El progreso del jugador es la distancia en metros a lo largo de la ruta (`progress`). Para convertirlo en un segundo de canción:
+`MazeRoute` calcula el progreso como distancia en metros desde el primer waypoint y expone `CumulativeDistance(i)` para obtener la distancia exacta de cada waypoint. El director usa ese progreso para registrar y recuperar la línea temporal, no para convertirlo directamente a un segundo predeterminado.
 
-```csharp
-float BaseMap(float progress)
-{
-    float k = route.progressToSong.Evaluate(route.Normalized(progress)); // 0..1
-    return Mathf.Lerp(songStartTime, songEndTime, k);
-}
-```
+Al iniciar, `song.Begin(songStartTime)` coloca la canción en el segundo configurado. Cada vez que la punta del jugador avanza, `AdvanceHead` guarda `song.CurrentTime` en los waypoints recién alcanzados. También guarda el tiempo del punto más avanzado (`frontierProgress` y `frontierTime`).
 
-- `songStartTime`: segundo de la canción en el inicio de la ruta.
-- `songEndTime`: segundo de la canción en la meta.
-- `progressToSong` (en `MazeRoute`): curva opcional para que el mapeo no sea lineal (por ejemplo, para anclar hitos musicales a puntos concretos).
-- `referenceSpeed`: si es mayor que 0, el director calcula `songEndTime = songStartTime + longitudRuta / referenceSpeed`, de modo que a esa velocidad la canción suene a 1x. Si la canción es más corta que eso, lo limita y muestra un aviso en la Console.
+Durante un retroceso, `RecordedTimeAt(progress)` interpola entre los tiempos guardados de los waypoints y la punta. La diferencia entre ese tiempo y `song.CurrentTime` determina una velocidad negativa limitada por `maxReverseRate`. Si el jugador vuelve a avanzar lo suficiente, la punta se recoloca en ese punto y se descartan los registros que ya no están por delante.
 
-**Posición esperada y desfase (`songOffset`).** La posición esperada de la canción en un punto es `BaseMap(progress) + songOffset`. El `songOffset` se fija en dos momentos:
-
-1. Al llegar al primer waypoint: `songOffset = songStartTime − BaseMap(progreso)`.
-2. Al volver a la ruta desde un desvío: `songOffset = song.CurrentTime − BaseMap(progreso)`.
-
-En ambos casos se hace lo mismo: **anclar** la canción a donde esté sonando en ese instante. Así, la diferencia entre "donde debería estar" y "donde está" empieza siendo cero, y no se interpreta nada como retroceso.
+Al volver desde fuera de la ruta no se rebobina la canción: `ReenterRoute` coloca la punta en el progreso actual y la reproducción continúa donde estaba.
 
 ---
 
@@ -154,7 +145,7 @@ En ambos casos se hace lo mismo: **anclar** la canción a donde esté sonando en
 ### Cómo funciona
 - La dirección y velocidad se controlan con `AudioSource.pitch`: positivo = adelante, negativo = atrás. `-1` equivale a `60 s → 59 s → 58 s…`.
 - La posición se lee y se escribe con `timeSamples` (precisión de muestra). Se usa para el arranque y para leer la posición; **no se salta de posición mientras suena**, porque produce clics.
-- **Nunca se llama a `Stop()`.** La canción siempre está en reproducción; solo cambia su velocidad.
+- Con velocidad 0 se usa `AudioSource.Pause()`, conservando exactamente la posición. `UnPause()` se aplica al reanudar.
 - La velocidad deseada se suaviza (`SmoothDamp`, 0.05 s). Al cruzar por 0 se obtiene un efecto de "tape stop" en lugar de un cambio brusco.
 - Cuando `|velocidad|` es menor que `fadeBelowRate`, el volumen se atenúa proporcionalmente. Evita zumbidos y clics al pausar o invertir. Una canción pausada queda en silencio.
 
@@ -162,7 +153,7 @@ En ambos casos se hace lo mismo: **anclar** la canción a donde esté sonando en
 - **`loop = true`** aunque la canción no se repite. Con `pitch` negativo y loop desactivado, Unity puede no reproducir el audio. El salto del loop se evita con un margen (`edgeMarginSeconds`, 0.25 s): al acercarse al inicio o al final se frena la velocidad.
 - **Pitch mínimo de 0.01** conservando el signo (nunca exactamente 0).
 - Rango de `pitch` en Unity: de −3 a 3.
-- Al llegar al final se dispara el evento `SongEnded`.
+- Al acercarse al final se frena la reproducción para evitar el salto del loop y se dispara una vez el evento `SongEnded`.
 - El `AudioSource` debe ser **2D** (`spatialBlend = 0`).
 
 ### Configuración recomendada del AudioClip
@@ -223,46 +214,38 @@ Como el valor depende de la distancia, **la distorsión baja de forma progresiva
 
 ### Antes de empezar (`Arming`)
 - No suena nada y la distorsión es 0.
-- Cuando la distancia en el plano entre el jugador y el primer waypoint es menor o igual que `startTriggerRadius` (1.5 m), arranca la canción en `songStartTime` y se ancla el progreso (`songOffset`).
-- Llegar al primer waypoint **no** se interpreta como retroceso: es la inicialización.
+- Cuando la distancia en el plano entre el jugador y el primer waypoint es menor o igual que `startTriggerRadius` (1.5 m), arranca la canción en `songStartTime`.
+- Llegar al primer waypoint **no** se interpreta como retroceso: es la inicialización del registro temporal.
 
-### Avanzar por la ruta correcta (`OnRoute`)
-La velocidad de la canción depende del camino:
+### Avanzar por la ruta correcta (`Advancing`)
+- Mientras el jugador se mueve por encima de `minMoveSpeed` (0.05 m/s por defecto), la canción avanza a 1x.
+- Si el jugador se detiene, pasa a `Stopped` y la canción se pausa exactamente.
+- Los tiempos se registran al alcanzar cada waypoint con una tolerancia de `waypointTolerance`.
 
-```csharp
-float rate = localSlope * progressVelocity + Correction(err);
-```
-
-- `progressVelocity`: velocidad (m/s) con la que el jugador avanza **a lo largo de la ruta**, suavizada.
-- `localSlope`: segundos de canción por metro en ese punto de la ruta.
-- `Correction(err)`: corrección suave si la canción se desvía más de `syncDeadzone` (0.25 s) de la posición esperada.
-- Jugador quieto = música en pausa. Jugador lento = música lenta. Jugador rápido = música rápida (hasta `maxForwardRate`).
-
-### Retroceder por la ruta correcta (backtracking)
-- Se considera retroceso real cuando `progressVelocity < −retreatSpeed` (0.1 m/s por defecto).
-- Entonces la velocidad es negativa y la canción se reproduce **hacia atrás**, proporcional a la velocidad de retroceso (hasta `maxReverseRate`, 2.5).
-- Si no hay retroceso real, la velocidad nunca es negativa: `rate = Mathf.Max(0f, rate)`.
-- Al volver a avanzar, la canción continúa hacia delante desde donde quedó.
+### Retroceder por la ruta correcta (`Retreating`)
+- Se considera retroceso real cuando el progreso está al menos `retreatEnterDistance` (1.5 m) por detrás de la punta y esa condición dura `retreatConfirmSeconds` (0.12 s).
+- El director interpola el tiempo guardado del punto actual e intenta alcanzarlo con una velocidad negativa proporcional al error (`reverseGain`), limitada por `maxReverseRate` (2.5).
+- El reverse se abandona cuando el jugador avanza `retreatExitDistance` (1 m) desde el punto más retrocedido. En ese momento la punta se recoloca y los registros posteriores dejan de ser válidos.
 
 ### Desviarse (`OffRoute`)
-- La canción **sigue sonando hacia delante**, con velocidad proporcional al movimiento del jugador en el plano (`playerSpeed * songPerMeter`, limitada entre 0 y `maxForwardRate`). Si el jugador se queda quieto, la música se detiene.
+- La canción **sigue sonando hacia delante a 1x** mientras el jugador se mueve. Si el jugador se queda quieto, la música se detiene.
 - **Nunca hay reverse fuera de ruta**, aunque el jugador deshaga el camino.
 - La distorsión aumenta según la distancia a la ruta.
 
 ### Regresar desde una ruta incorrecta
 - Mientras el jugador se acerca a la ruta, la canción sigue hacia delante y la distorsión disminuye progresivamente.
-- Al volver a `OnRoute` se **reancla**: `songOffset = song.CurrentTime − BaseMap(progreso)`. La canción continúa por donde estaba sonando, sin rebobinar.
-- Consecuencia: tras un desvío, la canción queda **adelantada** respecto a la relación original metros ↔ segundos.
+- Al volver a la ruta se recoloca la punta temporal en el progreso actual. La canción continúa por donde estaba sonando, sin rebobinar ni corregir saltos.
 
 Resumen:
 
 | Situación | Música | Distorsión |
 |---|---|---|
-| Ruta correcta, avanzando | Avanza | 0 |
-| Ruta correcta, retrocediendo | Reverse | 0 |
-| Desvío | Avanza (nunca reverse) | Sube con la distancia |
-| Regreso de un desvío | Avanza, sin reverse | Baja progresivamente |
-| Ruta correcta otra vez | Avanza desde donde estaba | 0 |
+| Ruta correcta, avanzando | Avanza a 1x | 0 |
+| Ruta correcta, detenido | Pausa exacta | 0 |
+| Ruta correcta, retrocediendo confirmado | Reverse hacia tiempos registrados | 0 |
+| Desvío | Avanza a 1x si se mueve, nunca reverse | Sube con la distancia |
+| Regreso de un desvío | Continúa desde donde estaba | Baja progresivamente |
+| Último waypoint | Continúa hasta el final | 0 |
 
 ---
 
@@ -270,8 +253,8 @@ Resumen:
 
 1. **Waypoints** → definen la ruta correcta (polilínea) y dónde empieza.
 2. **Posición del jugador** (plano XZ) → `MazeRoute.Project` la convierte en `progress` y `lateral`.
-3. **`lateral`** → decide el estado (`OnRoute`/`OffRoute`) y la distorsión.
-4. **`progress`** → se convierte en segundos de canción esperados y en velocidad a lo largo de la ruta (`progressVelocity`).
+3. **`lateral`** → decide si el jugador está dentro/fuera de la ruta y alimenta la distorsión.
+4. **`progress`** → se usa para registrar tiempos en waypoints y recuperar tiempos interpolados durante el reverse.
 5. **Velocidad deseada** → `ReversibleSongPlayer` la aplica al `AudioSource.pitch`.
 6. **Distorsión deseada** → `MusicDegradation` la aplica a los parámetros del AudioMixer.
 
@@ -291,11 +274,12 @@ Ruta correcta como polilínea. Va en `CorrectRoute`.
 - `Rebuild()`: construye la polilínea y las distancias acumuladas a partir de los waypoints.
 - `Project(posición, progresoMin, progresoMax, out Sample)`: devuelve `progress`, `lateral` y el punto proyectado, limitado a una ventana de la ruta.
 - `Normalized(progress)`: progreso de 0 a 1. `Length`: longitud total. `StartPoint`: primer punto.
-- `progressToSong`: curva de mapeo progreso → canción.
+- `CumulativeDistance(i)`: distancia acumulada hasta el waypoint `i`.
+- `WaypointCount`: cantidad de waypoints válidos.
 
 ### `ResonanceMusicDirector.cs`
-El cerebro. Va en `MusicDirector`. Contiene la máquina de estados (`Arming`, `OnRoute`, `OffRoute`), el mapeo ruta → canción, el cálculo de la velocidad y el cálculo de la distorsión.
-- Incluye una línea de **debug** en pantalla (`showDebug`): estado, segundo de canción, velocidad, error, velocidad por la ruta, distancia lateral, segundos por metro y distorsión.
+El cerebro. Va en `MusicDirector`. Contiene la máquina de estados (`Arming`, `Advancing`, `Stopped`, `Retreating`, `OffRoute`, `Completed`, `TimeUp`), el registro temporal por waypoint, el cálculo del reverse y la distorsión.
+- Incluye una línea de **debug** en pantalla (`showDebug`): estado, segundo de canción, tiempo restante, velocidad, distancia lateral, wrongness, progreso y punta registrada.
 - Al seleccionarlo, dibuja una esfera cian con el radio de arranque alrededor del primer waypoint.
 
 ### `MusicDegradation.cs`
@@ -311,14 +295,14 @@ Prueba del rewind **sin laberinto**. Usa el **Input System nuevo** (`Keyboard.cu
 |---|---|
 | Controlar velocidad (`pitch`), no saltar posición | Un salto mientras suena produce clics y rompe la continuidad. |
 | `loop = true` + margen en los bordes | `pitch` negativo con loop desactivado puede no sonar. |
-| Un solo `AudioSource`, nunca `Stop()` | Evita reinicios y mantiene la posición continua. |
+| Un solo `AudioSource` y pausa exacta | Evita reinicios y mantiene la posición continua. |
 | Fade por velocidad baja | Evita zumbidos al pausar o cruzar por 0. |
 | Ventana de búsqueda en `Project` | Evita confundir pasillos paralelos con la ruta. |
 | Histéresis en el estado de ruta | Evita parpadeo en el borde del radio. |
 | Distorsión calculada de la distancia, sin estados | Respuesta inmediata y bajada progresiva al volver. |
 | Suavizado exponencial en la distorsión | Responde desde el primer frame; `SmoothDamp` tiene inercia inicial. |
-| Reanclar (`songOffset`) al llegar y al volver | Evita que un desfase se interprete como retroceso. |
-| `Mathf.Max(0f, rate)` salvo retroceso real | Garantiza que solo el retroceso real produce reverse. |
+| Registrar tiempos por waypoint | Permite recuperar el tiempo musical correspondiente al retroceder. |
+| Confirmación por distancia y tiempo | Filtra falsos retrocesos antes de activar el reverse. |
 | `DefaultExecutionOrder` | Evita un frame de retraso entre movimiento y audio. |
 
 ---
@@ -360,7 +344,7 @@ Escena
 5. Crea `MainMixer` con el grupo `Music` y los cuatro efectos; expón y renombra los parámetros (sección 8); asigna el `Output` del `AudioSource` y el `Mixer` de `MusicDegradation`.
 6. Crea `CorrectRoute` con `MazeRoute` y los waypoints hijos en orden.
 7. Crea `MusicDirector` con `ResonanceMusicDirector` y rellena los campos.
-8. Ajusta `Song Start Time` y `Song End Time` (o `Reference Speed`).
+8. Ajusta `Song Start Time` y los parámetros de confirmación del backtracking.
 9. Pulsa Play y observa la línea de debug.
 
 ---
@@ -372,30 +356,33 @@ Escena
 | Parámetro | Defecto | Qué hace |
 |---|---|---|
 | `startTriggerRadius` | 1.5 | Distancia al primer waypoint que arranca la canción. |
-| `songStartTime` / `songEndTime` | 0 / 150 | Segundos de canción en el inicio y en la meta. |
-| `referenceSpeed` | 0 | Si > 0, calcula `songEndTime` para que a esa velocidad (m/s) la canción suene a 1x. |
-| `routeEnterRadius` / `routeLeaveRadius` | 1.5 / 2.5 | Radios (m) para entrar y salir de la ruta. |
+| `songStartTime` | 0 | Segundo de canción en el que empieza el recorrido. |
+| `insideRadius` / `exitRadius` | 2.25 / 3.25 | Radios (m) para entrar y salir de la ruta. |
 | `searchWindow` | 15 | Ventana (m) de búsqueda de la ruta alrededor del último progreso. |
 | `safeRadius` / `fullWrongRadius` | 1 / 4 | Distancia (m) donde empieza y termina de crecer la distorsión. |
-| `speedSmoothing` | 0.08 | Suavizado (s) de las velocidades medidas. Menor = reacciona antes, más sensible a temblores. |
-| `retreatSpeed` | 0.1 | Velocidad (m/s) hacia atrás que cuenta como retroceso real. |
-| `maxForwardRate` / `maxReverseRate` | 2 / 2.5 | Límites de velocidad de la canción. |
-| `syncDeadzone` / `syncGain` / `maxCorrectionRate` | 0.25 / 2 / 1 | Corrección de posición en ruta. |
+| `speedSmoothing` | 0.08 | Suavizado (s) de la velocidad medida del jugador. |
+| `minMoveSpeed` | 0.05 | Velocidad mínima (m/s) para considerar que el jugador se mueve. |
+| `waypointTolerance` | 0.75 | Distancia (m) antes del waypoint a la que se registra como alcanzado. |
+| `retreatEnterDistance` | 1.5 | Distancia (m) por detrás de la punta para iniciar la confirmación. |
+| `retreatConfirmSeconds` | 0.12 | Tiempo (s) que debe mantenerse el retroceso para confirmarlo. |
+| `retreatExitDistance` | 1 | Avance (m) necesario para salir del modo reverse. |
+| `reverseGain` / `maxReverseRate` | 6 / 2.5 | Ganancia y límite de velocidad del reverse. |
 
 ### Otros componentes
 
 | Componente | Parámetro | Defecto |
 |---|---|---|
 | `ReversibleSongPlayer` | `rateSmoothSeconds` | 0.05 |
-| | `fadeBelowRate` | 0.15 (se recomendó bajarlo a 0.05 para velocidades lentas) |
+| | `fadeBelowRate` | 0.15 |
 | | `edgeMarginSeconds` | 0.25 |
 | | `maxAbsRate` | 3 |
 | `MusicDegradation` | `attackSeconds` / `releaseSeconds` | 0.08 / 0.25 |
 
 ### Ajustes habituales
 - **Distorsión demasiado pronto o tarde:** `safeRadius` (aprox. la mitad del ancho del pasillo) y `fullWrongRadius`.
-- **Marca `OffRoute` en el camino correcto:** sube `routeLeaveRadius` y `routeEnterRadius`; revisa que los waypoints estén en el centro del pasillo.
-- **Música muy lenta/rápida en ruta:** revisa `songEndTime` o `referenceSpeed` (ver [sección 14](#14-limitaciones-y-problemas-conocidos)).
+- **Marca `OffRoute` en el camino correcto:** sube `exitRadius` e `insideRadius`; revisa que los waypoints estén en el centro del pasillo.
+- **El reverse entra demasiado pronto:** aumenta `retreatEnterDistance` o `retreatConfirmSeconds`.
+- **El reverse no sale al volver a avanzar:** reduce `retreatExitDistance`.
 - **Música se apaga a velocidades bajas:** baja `fadeBelowRate`.
 - **Más o menos efecto:** edita los valores limpio/degradado y las curvas en `MusicDegradation`.
 - **Añadir otro efecto:** expón su parámetro en el mixer y añádelo a la lista `parameters` con su nombre exacto.
@@ -411,24 +398,23 @@ Escena
 
 Estos puntos son observaciones reales del estado actual:
 
-1. **Falsos retrocesos.** El retroceso se detecta con la velocidad del progreso proyectado sobre la línea de waypoints. Si el jugador no camina exactamente sobre la línea (zigzag, esquinas, línea fuera del centro del pasillo), la proyección puede deslizarse o saltar hacia atrás y activar un reverse sin que el jugador retroceda. La detección de estar fuera de ruta (distancia lateral) es más estable y por eso la distorsión funciona bien.
-2. **Velocidad de la canción atada a la longitud del recorrido.** La música suena a 1x solo si la duración de la canción coincide con el tiempo que tarda el jugador en recorrer la ruta a su velocidad. Con otra combinación suena más lenta, más rápida o en pausa. Por ejemplo, 1 m/s a 1x requeriría una ruta de tantos metros como segundos tenga el tramo de canción.
+1. **Falsos retrocesos residuales.** La punta se calcula a partir del progreso proyectado sobre la línea de waypoints. El umbral de distancia y la confirmación temporal filtran buena parte de los saltos, pero una proyección inestable en esquinas o waypoints mal colocados todavía puede influir.
+2. **El reloj no depende de la velocidad del jugador.** La canción avanza a 1x mientras el jugador se mueve; por tanto, una ruta larga o muchas pausas pueden hacer que la canción termine antes de llegar a la meta.
 3. **El tono cambia con la velocidad.** La velocidad se controla con `pitch`, que también cambia el tono; un jugador lento oye música lenta y grave. El `AudioSource` nativo no ofrece time-stretch.
-4. **Tras un desvío, la canción queda adelantada.** Al reanclar, la canción puede llegar a su final antes que el jugador.
+4. **Tras un desvío, la canción sigue avanzando.** Al regresar no se rebobina ni se corrige la posición musical, por lo que puede llegar a su final antes que el jugador.
 5. **La distancia lateral es en línea recta.** Si dos pasillos van en paralelo a menos de `safeRadius`, un jugador en el pasillo equivocado no se distorsionará.
 6. **Un atajo no se detecta como regreso.** Si un camino incorrecto vuelve a cruzar la ruta más allá de `searchWindow`, el sistema no lo reconoce.
 7. **WebGL no soporta `pitch` negativo.**
 8. **No probado en Unity.** El código fue escrito y revisado leyéndolo, no compilándolo ni ejecutándolo.
-9. **Plan B no implementado.** Se planteó como alternativa dividir la canción en fragmentos automáticamente; no se ha escrito ningún código para eso.
+9. **El reverse usa registros discretos.** Solo se guardan tiempos al alcanzar waypoints y en la punta más avanzada; no existe un registro por frame.
 
 ---
 
-## 15. Alternativas discutidas (NO implementadas)
+## 15. Decisiones incorporadas
 
-La última conversación terminó con una propuesta aún sin implementar, anotada aquí solo para contexto. **Nada de esto existe en el código actual.**
+Las dos decisiones principales discutidas ya están incorporadas:
 
-- **La canción como reloj:** reproducirla siempre a 1x hacia delante desde el primer waypoint, y que su duración sea el tiempo límite para llegar a la meta. Eliminaría la dependencia entre metros y segundos.
-- **Retroceso con registro:** anotar el segundo de la canción en cada punto de la ruta y, al retroceder de verdad, rebobinar hacia el segundo anotado de ese punto.
-- **Detección de progreso por zonas:** sustituir la proyección sobre la línea por volúmenes trigger por tramo (o celdas del laberinto), de modo que el retroceso sea una decisión discreta y no un cálculo continuo.
+- **La canción como reloj:** avanza a 1x desde el primer waypoint mientras el jugador se mueve y su final activa `TimeUp` si la ruta aún no está completada.
+- **Retroceso con registro:** se guarda el segundo de la canción en cada waypoint alcanzado y se interpola ese registro al retroceder por la ruta correcta.
 
-La decisión pendiente es si el retroceso por la ruta correcta debe seguir rebobinando la música o eliminarse.
+La ruta sigue usando proyección sobre una polilínea, no volúmenes trigger por tramo.

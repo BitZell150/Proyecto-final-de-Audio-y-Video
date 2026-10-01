@@ -1,22 +1,21 @@
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace Resonance
 {
     /// <summary>
-    /// La velocidad de la música depende del CAMINO, no del reloj:
-    ///     rate = (segundos de canción por metro de ruta) x (velocidad del jugador)
-    /// Jugador quieto = música en pausa. Jugador lento = música lenta. Retroceso real = reverse.
+    /// LA CANCIÓN ES UN RELOJ MUSICAL: empieza al llegar al primer waypoint y su final es el tiempo límite.
     ///
-    ///  ARMING    : la canción NO suena hasta que el jugador llega al primer waypoint.
-    ///  ON ROUTE  : avanzar -> adelante | retroceder sobre la ruta -> reverse (proporcional a la velocidad).
-    ///  OFF ROUTE : siempre hacia adelante (nunca reverse), también proporcional a la velocidad.
-    ///              La distorsión depende de la distancia a la ruta.
-    /// Al volver a la ruta se "reancla" la canción donde esté: sin rebobinado.
+    ///  - Avanzar (ruta o fuera de ella): la canción avanza a 1x. Detenido: pausa exacta.
+    ///  - Cada waypoint guarda el segundo de la canción en el que el jugador pasó por él.
+    ///  - Retroceder POR LA RUTA CORRECTA: la canción retrocede, desde donde está, siguiendo esos segundos guardados
+    ///    (interpolados entre waypoints). Nunca hay reverse fuera de ruta.
+    ///  - Distorsión: depende solo de la distancia a la ruta (sin cambios).
     /// </summary>
     [DefaultExecutionOrder(100)]
     public class ResonanceMusicDirector : MonoBehaviour
     {
-        public enum RouteState { Arming, OnRoute, OffRoute }
+        public enum MusicState { Arming, Advancing, Stopped, Retreating, OffRoute, Completed, TimeUp }
 
         [Header("Referencias")]
         [SerializeField] Transform player;
@@ -25,138 +24,152 @@ namespace Resonance
         [SerializeField] MusicDegradation degradation;
         [SerializeField] bool autoStart = true;
 
-        [Header("Inicio: la canción empieza al llegar aquí")]
+        [Header("Inicio: la canción empieza al llegar al primer waypoint")]
         [Tooltip("Arrastra aquí el PRIMER waypoint. Si lo dejas vacío se usa el primer punto de MazeRoute.")]
         [SerializeField] Transform firstWaypoint;
         [Tooltip("Distancia (m) al primer waypoint que dispara la canción.")]
         [SerializeField] float startTriggerRadius = 1.5f;
-
-        [Header("Mapeo ruta -> canción (segundos)")]
+        [Tooltip("Segundo de la canción con el que empieza el recorrido.")]
         [SerializeField] float songStartTime = 0f;
-        [Tooltip("Segundo de la canción en la meta. Se ignora si Reference Speed > 0.")]
-        [SerializeField] float songEndTime = 150f;
-        [Tooltip("Velocidad (m/s) a la que quieres que la música suene a ritmo normal (1x). " +
-                 "Pon la 'speed' de tu PlayerMovement. Si es > 0, calcula songEndTime automáticamente. 0 = desactivado.")]
-        [SerializeField] float referenceSpeed = 0f;
 
-        [Header("Estado de ruta (metros)")]
-        [SerializeField] float routeEnterRadius = 1.5f;
-        [SerializeField] float routeLeaveRadius = 2.5f;
+        [Header("Dentro / fuera de la ruta (metros a la línea de waypoints)")]
+        [Tooltip("Se considera que el jugador ENTRA en la ruta por debajo de esta distancia.")]
+        [SerializeField] float insideRadius = 2.25f;
+        [Tooltip("Se considera que SALE de la ruta por encima de esta distancia (>= insideRadius).")]
+        [SerializeField] float exitRadius = 3.25f;
         [SerializeField] float searchWindow = 15f;
 
-        [Header("Distorsión (metros desde la ruta)")]
+        [Header("Distorsión (sin cambios)")]
         [SerializeField] float safeRadius = 1f;
         [SerializeField] float fullWrongRadius = 4f;
 
-        [Header("Velocidad dependiente del camino")]
-        [Tooltip("Suavizado (s) de las velocidades medidas. Menor = reacciona antes.")]
+        [Header("Movimiento")]
+        [Tooltip("Suavizado (s) de la velocidad del jugador.")]
         [SerializeField] float speedSmoothing = 0.08f;
-        [Tooltip("Velocidad (m/s) hacia atrás sobre la ruta a partir de la cual se considera retroceso. Mantenla baja si tu personaje es lento.")]
-        [SerializeField] float retreatSpeed = 0.1f;
-        [SerializeField] float maxForwardRate = 2f;
+        [Tooltip("Por debajo de esta velocidad (m/s) se considera que el jugador está detenido.")]
+        [SerializeField] float minMoveSpeed = 0.05f;
+
+        [Header("Waypoints y backtracking")]
+        [Tooltip("Un waypoint cuenta como alcanzado a esta distancia (m) antes de llegar a él.")]
+        [SerializeField] float waypointTolerance = 0.75f;
+        [Tooltip("Metros por detrás del punto más avanzado para empezar a considerar un retroceso.")]
+        [SerializeField] float retreatEnterDistance = 1.5f;
+        [Tooltip("Segundos que debe mantenerse ese retroceso para confirmarlo (filtra falsos retrocesos).")]
+        [SerializeField] float retreatConfirmSeconds = 0.12f;
+        [Tooltip("Metros que debe avanzar desde el punto más retrocedido para volver a modo avance.")]
+        [SerializeField] float retreatExitDistance = 1f;
+        [SerializeField] float reverseGain = 6f;
         [SerializeField] float maxReverseRate = 2.5f;
 
-        [Header("Corrección de posición (solo en ruta)")]
-        [Tooltip("Error (s) tolerado entre la canción y la posición esperada antes de corregir.")]
-        [SerializeField] float syncDeadzone = 0.25f;
-        [SerializeField] float syncGain = 2f;
-        [SerializeField] float maxCorrectionRate = 1f;
+        [Header("Eventos")]
+        [SerializeField] UnityEvent onMazeCompleted;
+        [SerializeField] UnityEvent onTimeUp;
 
         [Header("Debug")]
         [SerializeField] bool showDebug = true;
 
-        public RouteState State { get; private set; } = RouteState.Arming;
+        public MusicState State { get; private set; } = MusicState.Arming;
 
-        bool running;
+        bool running, onRoute, retreating, timeUpPending;
         float lastProgress;
-        float progressVelocity;   // m/s a lo largo de la ruta (negativo = retrocede)
-        float playerSpeed;        // m/s en el plano
+        float retreatTimer, retreatLowest;
+        float playerSpeed;
         Vector3 lastPlayerPos;
-        float songOffset;
-        float songPerMeter;       // segundos de canción por metro (media de la ruta)
-        float desiredRate;
-        float lastLateral, lastErr;
+        float lastLateral;
+
+        // Línea temporal guardada: segundo de la canción por waypoint + la "punta" (punto más avanzado).
+        float[] rec;
+        int reachedIndex;
+        float frontierProgress, frontierTime;
 
         void Start()
         {
             if (autoStart) Begin();
         }
 
+        void OnDestroy()
+        {
+            if (song != null) song.SongEnded -= OnSongEnded;
+        }
+
         public void Begin()
         {
             route.Rebuild();
-
-            float available = song.Length > 0f ? song.Length - 1f : songEndTime;
-            if (referenceSpeed > 0f)
+            if (route.WaypointCount < 2)
             {
-                float wanted = songStartTime + route.Length / referenceSpeed;
-                if (wanted > available)
-                    Debug.LogWarning($"[Resonance] La ruta ({route.Length:F0} m) a {referenceSpeed} m/s necesita {wanted - songStartTime:F0} s de música, " +
-                                     $"pero solo hay {available - songStartTime:F0} s. La música sonará más lenta que 1x a esa velocidad.");
-                songEndTime = Mathf.Min(wanted, available);
-            }
-            else
-            {
-                songEndTime = Mathf.Min(songEndTime, available);
+                Debug.LogError("[Resonance] La ruta necesita al menos 2 waypoints.");
+                return;
             }
 
-            songPerMeter = (songEndTime - songStartTime) / Mathf.Max(0.01f, route.Length);
+            rec = new float[route.WaypointCount];
+            song.SongEnded -= OnSongEnded;
+            song.SongEnded += OnSongEnded;
 
             lastPlayerPos = Flat(player.position);
             playerSpeed = 0f;
-            progressVelocity = 0f;
-            songOffset = 0f;
-            desiredRate = 0f;
-            State = RouteState.Arming;
+            timeUpPending = false;
+            onRoute = false;
+            retreating = false;
+            State = MusicState.Arming;
             running = true;
+        }
+
+        void OnSongEnded()
+        {
+            if (State != MusicState.Completed) timeUpPending = true;
         }
 
         void Update()
         {
             if (!running) return;
 
+            if (State == MusicState.Completed || State == MusicState.TimeUp) return;
+
+            if (timeUpPending)
+            {
+                State = MusicState.TimeUp;
+                song.SetDesiredRate(0f);
+                if (degradation != null) degradation.Target = 0f;
+                onTimeUp?.Invoke();
+                return;
+            }
+
             float dt = Time.deltaTime;
             Vector3 p = Flat(player.position);
             UpdatePlayerSpeed(p, dt);
+            bool moving = playerSpeed > minMoveSpeed;
 
-            if (State == RouteState.Arming)
+            if (State == MusicState.Arming)
             {
                 TickArming(p);
                 return;
             }
 
+            // --- Distancia a la ruta: estado dentro/fuera + distorsión inmediata (misma lógica que antes) ---
             bool found = route.Project(p, lastProgress - searchWindow, lastProgress + searchWindow, out var s);
             float lateral = found ? s.lateral : float.MaxValue;
             lastLateral = lateral;
 
-            // Distorsión inmediata, basada solo en la distancia a la ruta.
             if (degradation != null)
                 degradation.Target = Mathf.InverseLerp(safeRadius, fullWrongRadius, lateral);
 
-            float radius = State == RouteState.OnRoute ? routeLeaveRadius : routeEnterRadius;
-            bool onRoute = found && lateral <= radius;
+            bool nowOnRoute = found && lateral <= (onRoute ? exitRadius : insideRadius);
 
-            if (onRoute)
+            if (nowOnRoute)
             {
-                if (State == RouteState.OffRoute)
-                {
-                    // Regreso desde ruta incorrecta: reancla donde suena la canción (sin rebobinar).
-                    songOffset = song.CurrentTime - BaseMap(s.progress);
-                    lastProgress = s.progress;
-                    progressVelocity = 0f;
-                    State = RouteState.OnRoute;
-                }
-                TickOnRoute(s, dt);
+                if (!onRoute) ReenterRoute(s.progress);
+                onRoute = true;
+                TickOnRoute(s.progress, moving, dt);
             }
             else
             {
-                State = RouteState.OffRoute;
-                progressVelocity = 0f;
-                // Fuera de ruta: solo hacia adelante, y proporcional a lo que se mueve el jugador.
-                desiredRate = Mathf.Clamp(playerSpeed * songPerMeter, 0f, maxForwardRate);
+                // FUERA DE RUTA: la canción sigue hacia delante (si el jugador se mueve). Nunca reverse.
+                onRoute = false;
+                retreating = false;
+                retreatTimer = 0f;
+                State = MusicState.OffRoute;
+                song.SetDesiredRate(moving ? 1f : 0f);
             }
-
-            song.SetDesiredRate(desiredRate);
         }
 
         // ------------------------------------------------------------ INICIO
@@ -169,60 +182,132 @@ namespace Resonance
             lastLateral = Vector3.Distance(p, start);
             if (lastLateral > startTriggerRadius) return;
 
-            // Llegada al primer waypoint: aquí empieza la canción y el recorrido real.
+            // Llegada al primer waypoint: empieza la canción y la línea temporal guardada.
             float prog = route.Project(p, 0f, searchWindow, out var s) ? s.progress : 0f;
-
             song.Begin(songStartTime);
-            songOffset = songStartTime - BaseMap(prog);
+
+            rec[0] = songStartTime;
+            reachedIndex = 0;
+            frontierProgress = prog;
+            frontierTime = songStartTime;
             lastProgress = prog;
-            progressVelocity = 0f;
-            State = RouteState.OnRoute;
+            onRoute = true;
+            retreating = false;
+            retreatTimer = 0f;
+            State = MusicState.Advancing;
         }
 
         // ------------------------------------------------------------ EN RUTA
 
-        void TickOnRoute(MazeRoute.Sample s, float dt)
+        void TickOnRoute(float p, bool moving, float dt)
         {
-            if (dt > 0f)
+            lastProgress = p;
+
+            if (!retreating)
             {
-                float k = 1f - Mathf.Exp(-dt / Mathf.Max(0.001f, speedSmoothing));
-                progressVelocity = Mathf.Lerp(progressVelocity, (s.progress - lastProgress) / dt, k);
+                if (p > frontierProgress)
+                {
+                    AdvanceHead(p);
+                    if (State == MusicState.Completed) return;
+                }
+
+                // ¿Retroceso real? Debe estar bastante por detrás de la punta y mantenerse un instante.
+                if (frontierProgress - p >= retreatEnterDistance) retreatTimer += dt;
+                else retreatTimer = 0f;
+
+                if (retreatTimer >= retreatConfirmSeconds)
+                {
+                    retreating = true;
+                    retreatLowest = p;
+                }
             }
-            lastProgress = s.progress;
+            else
+            {
+                retreatLowest = Mathf.Min(retreatLowest, p);
 
-            float expected = ExpectedSongTime(s.progress);
-            float err = expected - song.CurrentTime;   // + : la canción va atrasada
-            lastErr = err;
+                // El jugador vuelve a avanzar: lo guardado por delante deja de ser válido.
+                if (p >= retreatLowest + retreatExitDistance)
+                {
+                    retreating = false;
+                    retreatTimer = 0f;
+                    SetHead(p);
+                }
+            }
 
-            // Pendiente local de la ruta: segundos de canción por metro en este punto.
-            float localSlope = ExpectedSongTime(s.progress + 0.5f) - ExpectedSongTime(s.progress - 0.5f);
-
-            // Velocidad = lo que avanza el jugador por el camino (+ corrección suave de posición).
-            float rate = localSlope * progressVelocity + Correction(err);
-
-            // Solo hay reverse si el jugador retrocede de verdad por la ruta.
-            if (progressVelocity >= -retreatSpeed) rate = Mathf.Max(0f, rate);
-
-            desiredRate = Mathf.Clamp(rate, -maxReverseRate, maxForwardRate);
+            if (retreating)
+            {
+                // Retroceder desde la posición ACTUAL hacia el segundo guardado de este punto de la ruta.
+                float target = RecordedTimeAt(p);
+                float err = target - song.CurrentTime;   // negativo: la canción debe retroceder
+                float rate = moving ? Mathf.Clamp(err * reverseGain, -maxReverseRate, 0f) : 0f;
+                song.SetDesiredRate(rate);
+                State = MusicState.Retreating;
+            }
+            else
+            {
+                song.SetDesiredRate(moving ? 1f : 0f);
+                State = moving ? MusicState.Advancing : MusicState.Stopped;
+            }
         }
 
-        float Correction(float err)
+        // Regreso desde una ruta incorrecta: la canción continúa donde está; la punta se coloca aquí.
+        void ReenterRoute(float progress)
         {
-            float a = Mathf.Abs(err) - syncDeadzone;
-            if (a <= 0f) return 0f;
-            return Mathf.Sign(err) * Mathf.Min(a * syncGain, maxCorrectionRate);
+            retreating = false;
+            retreatTimer = 0f;
+            lastProgress = progress;
+            SetHead(progress);
         }
 
-        float BaseMap(float progress)
+        // ------------------------------------------------------------ LÍNEA TEMPORAL GUARDADA
+
+        bool Reached(int i, float p) => p >= route.CumulativeDistance(i) - waypointTolerance;
+
+        // La punta avanza: se guarda el segundo de la canción en cada waypoint recién alcanzado.
+        void AdvanceHead(float p)
         {
-            float k = route.progressToSong.Evaluate(route.Normalized(progress));
-            return Mathf.Lerp(songStartTime, songEndTime, k);
+            frontierProgress = p;
+            frontierTime = song.CurrentTime;
+
+            int last = route.WaypointCount - 1;
+            while (reachedIndex < last && Reached(reachedIndex + 1, p))
+            {
+                reachedIndex++;
+                rec[reachedIndex] = song.CurrentTime;
+            }
+
+            if (reachedIndex == last)
+            {
+                State = MusicState.Completed;
+                if (degradation != null) degradation.Target = 0f;
+                song.SetDesiredRate(1f);   // la canción termina de sonar
+                onMazeCompleted?.Invoke();
+            }
         }
 
-        float ExpectedSongTime(float progress)
+        // Coloca la punta en p con el segundo actual y descarta los waypoints guardados por delante.
+        void SetHead(float p)
         {
-            float maxT = song.Length > 0f ? song.Length - 1f : songEndTime;
-            return Mathf.Clamp(BaseMap(progress) + songOffset, songStartTime, maxT);
+            frontierProgress = p;
+            frontierTime = song.CurrentTime;
+            while (reachedIndex > 0 && !Reached(reachedIndex, p)) reachedIndex--;
+        }
+
+        // Segundo de canción asociado a un punto de la ruta (interpolando entre waypoints guardados).
+        float RecordedTimeAt(float p)
+        {
+            p = Mathf.Clamp(p, 0f, frontierProgress);
+
+            int k = 0;
+            while (k < reachedIndex && route.CumulativeDistance(k + 1) <= p) k++;
+
+            float p0 = route.CumulativeDistance(k), t0 = rec[k];
+            float p1, t1;
+            if (k < reachedIndex) { p1 = route.CumulativeDistance(k + 1); t1 = rec[k + 1]; }
+            else { p1 = frontierProgress; t1 = frontierTime; }
+
+            if (p1 - p0 < 0.001f) return t0;
+            return Mathf.Lerp(t0, t1, Mathf.Clamp01((p - p0) / (p1 - p0)));
         }
 
         void UpdatePlayerSpeed(Vector3 p, float dt)
@@ -235,24 +320,34 @@ namespace Resonance
 
         static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
+        // ------------------------------------------------------------ DEBUG
+
         void OnGUI()
         {
             if (!showDebug || !running) return;
 
-            string txt = State == RouteState.Arming
-                ? $"Arming | esperando el primer waypoint ({lastLateral:F1} m)"
-                : $"{State} | song {song.CurrentTime:F1}s | rate {song.CurrentRate:F2} | err {lastErr:F2}s | " +
-                  $"pathVel {progressVelocity:F2}m/s | lateral {lastLateral:F1}m | s/m {songPerMeter:F2} | " +
-                  $"wrongness {(degradation != null ? degradation.Current : 0f):F2}";
-            GUI.Label(new Rect(10, 10, 1000, 24), txt);
+            if (State == MusicState.Arming)
+            {
+                GUI.Label(new Rect(10, 10, 900, 24), $"Arming | esperando el primer waypoint ({lastLateral:F1} m)");
+                return;
+            }
+
+            float remaining = Mathf.Max(0f, song.Length - song.CurrentTime);
+            GUI.Label(new Rect(10, 10, 1100, 24),
+                $"{State} | song {song.CurrentTime:F1}s (quedan {remaining:F0}s) | rate {song.CurrentRate:F2} | " +
+                $"lateral {lastLateral:F1}m | wrongness {(degradation != null ? degradation.Current : 0f):F2} | " +
+                $"progreso {lastProgress:F1}m / punta {frontierProgress:F1}m");
+
+            string recs = "";
+            for (int i = Mathf.Max(0, reachedIndex - 7); i <= reachedIndex; i++) recs += $"WP{i}={rec[i]:F1}s  ";
+            GUI.Label(new Rect(10, 30, 1100, 24), "Guardado: " + recs);
         }
 
         void OnDrawGizmosSelected()
         {
-            Transform t = firstWaypoint;
-            if (t == null) return;
+            if (firstWaypoint == null) return;
             Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(t.position, startTriggerRadius);
+            Gizmos.DrawWireSphere(firstWaypoint.position, startTriggerRadius);
         }
     }
 }
