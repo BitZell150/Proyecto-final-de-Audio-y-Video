@@ -20,25 +20,27 @@ namespace Resonance
     }
 
     /// <summary>
-    /// Convierte un único valor 0..1 ("wrongness") en varios parámetros del AudioMixer.
-    /// Se degrada despacio (attack) y se recupera más rápido (release).
+    /// Convierte un valor 0..1 ("wrongness") en varios parámetros del AudioMixer.
+    /// Suavizado exponencial: responde en el mismo frame (sin la inercia inicial de SmoothDamp).
     /// </summary>
+    [DefaultExecutionOrder(200)] // después del director: lee su Target del mismo frame
     public class MusicDegradation : MonoBehaviour
     {
         [SerializeField] AudioMixer mixer;
         [SerializeField] MixerParam[] parameters;
-        [SerializeField] float attackTime = 1.5f;
-        [SerializeField] float releaseTime = 0.6f;
+        [Tooltip("Constante de tiempo (s) al empeorar. Pequeña = distorsión casi instantánea.")]
+        [SerializeField] float attackSeconds = 0.08f;
+        [Tooltip("Constante de tiempo (s) al recuperarse. Da una bajada progresiva pero ágil.")]
+        [SerializeField] float releaseSeconds = 0.25f;
 
         /// <summary>0 = música limpia, 1 = totalmente degradada.</summary>
         public float Target { get; set; }
         public float Current => current;
 
-        float current, velocity;
+        float current;
 
         void Reset()
         {
-            // Valores iniciales de ejemplo. Ajusta los nombres a los que expongas en tu mixer.
             parameters = new[]
             {
                 new MixerParam { exposedName = "MusicLowpass",    cleanValue = 22000f,  wrongValue = 700f,   logarithmic = true },
@@ -52,8 +54,9 @@ namespace Resonance
 
         void Update()
         {
-            float smooth = Target > current ? attackTime : releaseTime;
-            current = Mathf.SmoothDamp(current, Mathf.Clamp01(Target), ref velocity, Mathf.Max(0.01f, smooth));
+            float tau = Target > current ? attackSeconds : releaseSeconds;
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, tau));
+            current = Mathf.Lerp(current, Mathf.Clamp01(Target), k);
             Apply(current);
         }
 

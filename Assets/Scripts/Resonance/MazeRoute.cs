@@ -25,6 +25,9 @@ namespace Resonance
 
         public float Length { get; private set; }
 
+        /// <summary>Primer punto de la ruta (plano XZ). Válido tras Rebuild().</summary>
+        public Vector3 StartPoint => (pts != null && pts.Length > 0) ? pts[0] : transform.position;
+
         void Awake() => Rebuild();
 
         public void Rebuild()

@@ -12,6 +12,7 @@ namespace Resonance
     ///   Load Type = Decompress On Load, Preload Audio Data = ON, NO usar Streaming.
     ///   Compression Format = Vorbis (o PCM si hay memoria de sobra). Force To Mono = OFF.
     /// </summary>
+    [DefaultExecutionOrder(300)] // último: lee la velocidad ya decidida en este frame
     [RequireComponent(typeof(AudioSource))]
     public class ReversibleSongPlayer : MonoBehaviour
     {
@@ -23,9 +24,9 @@ namespace Resonance
         [Tooltip("Unity limita AudioSource.pitch al rango [-3, 3].")]
         [SerializeField] float maxAbsRate = 3f;
         [Tooltip("Suavizado de la velocidad. Al cruzar por 0 produce un efecto 'tape stop'.")]
-        [SerializeField] float rateSmoothTime = 0.12f;
+        [SerializeField] float rateSmoothSeconds = 0.05f;
         [Tooltip("Por debajo de este |rate| el volumen se atenúa (evita zumbidos/clics al pausar o invertir).")]
-        [SerializeField] float silenceBelowRate = 0.2f;
+        [SerializeField] float fadeBelowRate = 0.15f;
 
         [Header("Bordes")]
         [Tooltip("Margen respecto al inicio/fin donde se frena la reproducción (evita el salto del loop).")]
@@ -104,7 +105,7 @@ namespace Resonance
             if (atEnd && target > 0f) target = 0f;
             if (atStart && target < 0f) target = 0f;
 
-            currentRate = Mathf.SmoothDamp(currentRate, target, ref rateVelocity, rateSmoothTime);
+            currentRate = Mathf.SmoothDamp(currentRate, target, ref rateVelocity, rateSmoothSeconds);
 
             // Si la inercia del suavizado empuja hacia un borde, frenamos en seco.
             if ((atEnd && currentRate > 0f) || (atStart && currentRate < 0f))
@@ -124,7 +125,7 @@ namespace Resonance
             }
 
             ApplyPitch(currentRate);
-            source.volume = Mathf.Clamp01(Mathf.Abs(currentRate) / Mathf.Max(0.0001f, silenceBelowRate)) * masterVolume;
+            source.volume = Mathf.Clamp01(Mathf.Abs(currentRate) / Mathf.Max(0.0001f, fadeBelowRate)) * masterVolume;
         }
 
         void ApplyPitch(float rate)

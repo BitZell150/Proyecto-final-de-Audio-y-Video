@@ -1,33 +1,22 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Resonance
 {
     /// <summary>
-    /// Cerebro del sistema. Decide en cada frame la VELOCIDAD de reproducción (negativa = atrás)
-    /// y el nivel de degradación de la música.
+    /// La velocidad de la música depende del CAMINO, no del reloj:
+    ///     rate = (segundos de canción por metro de ruta) x (velocidad del jugador)
+    /// Jugador quieto = música en pausa. Jugador lento = música lenta. Retroceso real = reverse.
     ///
-    /// EN RUTA      : la canción avanza a 1x dentro de una ventana alrededor de la posición "esperada"
-    ///                (progreso en la ruta -> segundo de la canción). Si el jugador se adelanta, la canción
-    ///                acelera un poco; si se detiene, la canción espera (pausa suave).
-    /// FUERA DE RUTA: la canción sigue sonando hacia delante (degradada) y se dejan "migas de pan" con el
-    ///                segundo de la canción en cada punto. Si el jugador camina de vuelta por sus migas,
-    ///                la canción retrocede siguiendo esas marcas hasta el punto donde se bifurcó.
+    ///  ARMING    : la canción NO suena hasta que el jugador llega al primer waypoint.
+    ///  ON ROUTE  : avanzar -> adelante | retroceder sobre la ruta -> reverse (proporcional a la velocidad).
+    ///  OFF ROUTE : siempre hacia adelante (nunca reverse), también proporcional a la velocidad.
+    ///              La distorsión depende de la distancia a la ruta.
+    /// Al volver a la ruta se "reancla" la canción donde esté: sin rebobinado.
     /// </summary>
+    [DefaultExecutionOrder(100)]
     public class ResonanceMusicDirector : MonoBehaviour
     {
-        public enum RouteState { OnRoute, OffRoute }
-
-        struct Crumb
-        {
-            public Vector3 pos;
-            public float songTime;
-            public float dist; // distancia acumulada desde el punto de bifurcación
-            public Crumb(Vector3 pos, float songTime, float dist)
-            {
-                this.pos = pos; this.songTime = songTime; this.dist = dist;
-            }
-        }
+        public enum RouteState { Arming, OnRoute, OffRoute }
 
         [Header("Referencias")]
         [SerializeField] Transform player;
@@ -36,56 +25,57 @@ namespace Resonance
         [SerializeField] MusicDegradation degradation;
         [SerializeField] bool autoStart = true;
 
-        [Header("Mapeo ruta -> canción (segundos)")]
-        [Tooltip("Segundo de la canción al inicio de la ruta.")]
-        [SerializeField] float songStartTime = 0f;
-        [Tooltip("Segundo de la canción al final de la ruta.")]
-        [SerializeField] float songEndTime = 150f;
+        [Header("Inicio: la canción empieza al llegar aquí")]
+        [Tooltip("Arrastra aquí el PRIMER waypoint. Si lo dejas vacío se usa el primer punto de MazeRoute.")]
+        [SerializeField] Transform firstWaypoint;
+        [Tooltip("Distancia (m) al primer waypoint que dispara la canción.")]
+        [SerializeField] float startTriggerRadius = 1.5f;
 
-        [Header("Detección de ruta (metros)")]
-        [SerializeField] float onRouteRadius = 2f;
-        [Tooltip("Mayor que onRouteRadius para tener histéresis y evitar parpadeo.")]
-        [SerializeField] float offRouteRadius = 3f;
-        [Tooltip("Solo se buscan tramos de ruta cerca del último progreso conocido.")]
+        [Header("Mapeo ruta -> canción (segundos)")]
+        [SerializeField] float songStartTime = 0f;
+        [Tooltip("Segundo de la canción en la meta. Se ignora si Reference Speed > 0.")]
+        [SerializeField] float songEndTime = 150f;
+        [Tooltip("Velocidad (m/s) a la que quieres que la música suene a ritmo normal (1x). " +
+                 "Pon la 'speed' de tu PlayerMovement. Si es > 0, calcula songEndTime automáticamente. 0 = desactivado.")]
+        [SerializeField] float referenceSpeed = 0f;
+
+        [Header("Estado de ruta (metros)")]
+        [SerializeField] float routeEnterRadius = 1.5f;
+        [SerializeField] float routeLeaveRadius = 2.5f;
         [SerializeField] float searchWindow = 15f;
 
-        [Header("En ruta: ventana de sincronía (segundos de canción)")]
-        [SerializeField] float lagTolerance = 1.5f;
-        [SerializeField] float leadTolerance = 1.5f;
-        [SerializeField] float maxForwardRate = 1.5f;
-        [Tooltip("Si la canción va más adelantada que esto (p. ej. el jugador retrocedió por la ruta correcta), se rebobina.")]
-        [SerializeField] float rewindThreshold = 3f;
+        [Header("Distorsión (metros desde la ruta)")]
+        [SerializeField] float safeRadius = 1f;
+        [SerializeField] float fullWrongRadius = 4f;
 
-        [Header("Backtracking (fuera de ruta)")]
-        [SerializeField] float crumbSpacing = 0.75f;
-        [Tooltip("Distancia máxima a la estela para considerar que el jugador 'la sigue'.")]
-        [SerializeField] float trailSnapRadius = 1.5f;
-        [Tooltip("Segmentos cerca de la punta que aún cuentan como 'tierra nueva'.")]
-        [SerializeField] float tipMargin = 1.5f;
-        [Tooltip("Ganancia del seguimiento: rate = error(s) * ganancia.")]
-        [SerializeField] float followGain = 3f;
+        [Header("Velocidad dependiente del camino")]
+        [Tooltip("Suavizado (s) de las velocidades medidas. Menor = reacciona antes.")]
+        [SerializeField] float speedSmoothing = 0.08f;
+        [Tooltip("Velocidad (m/s) hacia atrás sobre la ruta a partir de la cual se considera retroceso. Mantenla baja si tu personaje es lento.")]
+        [SerializeField] float retreatSpeed = 0.1f;
+        [SerializeField] float maxForwardRate = 2f;
         [SerializeField] float maxReverseRate = 2.5f;
-        [SerializeField] int searchSegments = 80;
 
-        [Header("Degradación")]
-        [SerializeField] float degradeStartDistance = 2f;
-        [SerializeField] float degradeFullDistance = 15f;
+        [Header("Corrección de posición (solo en ruta)")]
+        [Tooltip("Error (s) tolerado entre la canción y la posición esperada antes de corregir.")]
+        [SerializeField] float syncDeadzone = 0.25f;
+        [SerializeField] float syncGain = 2f;
+        [SerializeField] float maxCorrectionRate = 1f;
 
         [Header("Debug")]
         [SerializeField] bool showDebug = true;
 
-        public RouteState State { get; private set; } = RouteState.OnRoute;
+        public RouteState State { get; private set; } = RouteState.Arming;
 
-        readonly List<Crumb> trail = new List<Crumb>();
-        int trailIndex;
         bool running;
-
         float lastProgress;
-        Vector3 lastOnRoutePos;
-        float lastOnRouteSongTime;
-
-        float desiredRate = 1f;
-        float degradationTarget;
+        float progressVelocity;   // m/s a lo largo de la ruta (negativo = retrocede)
+        float playerSpeed;        // m/s en el plano
+        Vector3 lastPlayerPos;
+        float songOffset;
+        float songPerMeter;       // segundos de canción por metro (media de la ruta)
+        float desiredRate;
+        float lastLateral, lastErr;
 
         void Start()
         {
@@ -95,15 +85,29 @@ namespace Resonance
         public void Begin()
         {
             route.Rebuild();
-            if (song.Length > 0f) songEndTime = Mathf.Min(songEndTime, song.Length - 1f);
 
-            song.Begin(songStartTime);
+            float available = song.Length > 0f ? song.Length - 1f : songEndTime;
+            if (referenceSpeed > 0f)
+            {
+                float wanted = songStartTime + route.Length / referenceSpeed;
+                if (wanted > available)
+                    Debug.LogWarning($"[Resonance] La ruta ({route.Length:F0} m) a {referenceSpeed} m/s necesita {wanted - songStartTime:F0} s de música, " +
+                                     $"pero solo hay {available - songStartTime:F0} s. La música sonará más lenta que 1x a esa velocidad.");
+                songEndTime = Mathf.Min(wanted, available);
+            }
+            else
+            {
+                songEndTime = Mathf.Min(songEndTime, available);
+            }
 
-            lastProgress = 0f;
-            lastOnRoutePos = Flat(player.position);
-            lastOnRouteSongTime = songStartTime;
-            trail.Clear();
-            State = RouteState.OnRoute;
+            songPerMeter = (songEndTime - songStartTime) / Mathf.Max(0.01f, route.Length);
+
+            lastPlayerPos = Flat(player.position);
+            playerSpeed = 0f;
+            progressVelocity = 0f;
+            songOffset = 0f;
+            desiredRate = 0f;
+            State = RouteState.Arming;
             running = true;
         }
 
@@ -111,191 +115,144 @@ namespace Resonance
         {
             if (!running) return;
 
+            float dt = Time.deltaTime;
             Vector3 p = Flat(player.position);
+            UpdatePlayerSpeed(p, dt);
+
+            if (State == RouteState.Arming)
+            {
+                TickArming(p);
+                return;
+            }
 
             bool found = route.Project(p, lastProgress - searchWindow, lastProgress + searchWindow, out var s);
-            float radius = State == RouteState.OnRoute ? offRouteRadius : onRouteRadius;
-            bool onRoute = found && s.lateral <= radius;
+            float lateral = found ? s.lateral : float.MaxValue;
+            lastLateral = lateral;
+
+            // Distorsión inmediata, basada solo en la distancia a la ruta.
+            if (degradation != null)
+                degradation.Target = Mathf.InverseLerp(safeRadius, fullWrongRadius, lateral);
+
+            float radius = State == RouteState.OnRoute ? routeLeaveRadius : routeEnterRadius;
+            bool onRoute = found && lateral <= radius;
 
             if (onRoute)
             {
                 if (State == RouteState.OffRoute)
                 {
-                    trail.Clear();
+                    // Regreso desde ruta incorrecta: reancla donde suena la canción (sin rebobinar).
+                    songOffset = song.CurrentTime - BaseMap(s.progress);
+                    lastProgress = s.progress;
+                    progressVelocity = 0f;
                     State = RouteState.OnRoute;
                 }
-                TickOnRoute(p, s);
+                TickOnRoute(s, dt);
             }
             else
             {
-                if (State == RouteState.OnRoute) BeginTrail();
-                TickOffRoute(p);
+                State = RouteState.OffRoute;
+                progressVelocity = 0f;
+                // Fuera de ruta: solo hacia adelante, y proporcional a lo que se mueve el jugador.
+                desiredRate = Mathf.Clamp(playerSpeed * songPerMeter, 0f, maxForwardRate);
             }
 
             song.SetDesiredRate(desiredRate);
-            if (degradation != null) degradation.Target = degradationTarget;
         }
 
-        // ---------------------------------------------------------------- EN RUTA
+        // ------------------------------------------------------------ INICIO
 
-        void TickOnRoute(Vector3 p, MazeRoute.Sample s)
+        void TickArming(Vector3 p)
         {
-            lastProgress = s.progress;
-            lastOnRoutePos = p;
-            lastOnRouteSongTime = song.CurrentTime;
+            if (degradation != null) degradation.Target = 0f;
 
-            float target = MapProgressToSongTime(s.progress);
-            desiredRate = WindowRate(target - song.CurrentTime);
-            degradationTarget = 0f;
+            Vector3 start = firstWaypoint != null ? Flat(firstWaypoint.position) : route.StartPoint;
+            lastLateral = Vector3.Distance(p, start);
+            if (lastLateral > startTriggerRadius) return;
+
+            // Llegada al primer waypoint: aquí empieza la canción y el recorrido real.
+            float prog = route.Project(p, 0f, searchWindow, out var s) ? s.progress : 0f;
+
+            song.Begin(songStartTime);
+            songOffset = songStartTime - BaseMap(prog);
+            lastProgress = prog;
+            progressVelocity = 0f;
+            State = RouteState.OnRoute;
         }
 
-        float MapProgressToSongTime(float progress)
+        // ------------------------------------------------------------ EN RUTA
+
+        void TickOnRoute(MazeRoute.Sample s, float dt)
+        {
+            if (dt > 0f)
+            {
+                float k = 1f - Mathf.Exp(-dt / Mathf.Max(0.001f, speedSmoothing));
+                progressVelocity = Mathf.Lerp(progressVelocity, (s.progress - lastProgress) / dt, k);
+            }
+            lastProgress = s.progress;
+
+            float expected = ExpectedSongTime(s.progress);
+            float err = expected - song.CurrentTime;   // + : la canción va atrasada
+            lastErr = err;
+
+            // Pendiente local de la ruta: segundos de canción por metro en este punto.
+            float localSlope = ExpectedSongTime(s.progress + 0.5f) - ExpectedSongTime(s.progress - 0.5f);
+
+            // Velocidad = lo que avanza el jugador por el camino (+ corrección suave de posición).
+            float rate = localSlope * progressVelocity + Correction(err);
+
+            // Solo hay reverse si el jugador retrocede de verdad por la ruta.
+            if (progressVelocity >= -retreatSpeed) rate = Mathf.Max(0f, rate);
+
+            desiredRate = Mathf.Clamp(rate, -maxReverseRate, maxForwardRate);
+        }
+
+        float Correction(float err)
+        {
+            float a = Mathf.Abs(err) - syncDeadzone;
+            if (a <= 0f) return 0f;
+            return Mathf.Sign(err) * Mathf.Min(a * syncGain, maxCorrectionRate);
+        }
+
+        float BaseMap(float progress)
         {
             float k = route.progressToSong.Evaluate(route.Normalized(progress));
             return Mathf.Lerp(songStartTime, songEndTime, k);
         }
 
-        // error = objetivo - actual. Positivo: la canción va atrasada.
-        float WindowRate(float err)
+        float ExpectedSongTime(float progress)
         {
-            if (err > lagTolerance)
-                return Mathf.Lerp(1f, maxForwardRate, Mathf.InverseLerp(lagTolerance, lagTolerance + 4f, err));
-
-            if (err >= -leadTolerance) return 1f;                 // dentro de la ventana: reproducción natural
-            if (err >= -rewindThreshold) return 0f;              // demasiado adelantada: espera
-            return -Mathf.Lerp(1f, maxReverseRate,               // muy adelantada: rebobina
-                Mathf.InverseLerp(rewindThreshold, rewindThreshold + 4f, -err));
+            float maxT = song.Length > 0f ? song.Length - 1f : songEndTime;
+            return Mathf.Clamp(BaseMap(progress) + songOffset, songStartTime, maxT);
         }
 
-        // ---------------------------------------------------------------- FUERA DE RUTA
-
-        void BeginTrail()
+        void UpdatePlayerSpeed(Vector3 p, float dt)
         {
-            trail.Clear();
-            trail.Add(new Crumb(lastOnRoutePos, lastOnRouteSongTime, 0f));
-            trailIndex = 0;
-            State = RouteState.OffRoute;
-        }
-
-        void TickOffRoute(Vector3 p)
-        {
-            FindOnTrail(p, out float cursor, out float distToTrail);
-
-            int tip = trail.Count - 1;
-            bool onTrail = distToTrail <= trailSnapRadius;
-            if (onTrail) trailIndex = Mathf.Clamp(Mathf.RoundToInt(cursor), 0, tip);
-
-            float pathDist;
-
-            if (onTrail && cursor < tip - tipMargin)
-            {
-                // RETROCEDIENDO por una estela ya recorrida: la canción sigue su sello temporal.
-                float target = TrailSongTime(cursor);
-                desiredRate = FollowRate(target - song.CurrentTime);
-                pathDist = TrailDistance(cursor);
-            }
-            else
-            {
-                // TIERRA NUEVA (o junto a la punta): la canción continúa hacia delante.
-                if (!onTrail && trailIndex < tip)
-                {
-                    // El jugador se desvió de la estela a medio camino: descartamos lo que queda por delante.
-                    trail.RemoveRange(trailIndex + 1, tip - trailIndex);
-                    tip = trailIndex;
-                }
-
-                Crumb last = trail[tip];
-                float d = Vector3.Distance(p, last.pos);
-                if (d >= crumbSpacing)
-                {
-                    last = new Crumb(p, song.CurrentTime, last.dist + d);
-                    trail.Add(last);
-                    trailIndex = trail.Count - 1;
-                    d = 0f;
-                }
-
-                desiredRate = 1f;
-                pathDist = last.dist + d;
-            }
-
-            degradationTarget = Mathf.Clamp01(Mathf.InverseLerp(degradeStartDistance, degradeFullDistance, pathDist));
-        }
-
-        float FollowRate(float err)
-        {
-            if (Mathf.Abs(err) < 0.04f) return 0f;
-            return Mathf.Clamp(err * followGain, -maxReverseRate, maxForwardRate);
-        }
-
-        // Proyecta al jugador sobre la estela (en una ventana de segmentos alrededor del último índice).
-        void FindOnTrail(Vector3 p, out float cursor, out float dist)
-        {
-            int n = trail.Count;
-            if (n == 1)
-            {
-                cursor = 0f;
-                dist = Vector3.Distance(p, trail[0].pos);
-                return;
-            }
-
-            int from = Mathf.Max(0, trailIndex - searchSegments);
-            int to = Mathf.Min(n - 2, trailIndex + searchSegments);
-            float best = float.MaxValue;
-            cursor = trailIndex;
-
-            for (int i = from; i <= to; i++)
-            {
-                Vector3 a = trail[i].pos, ab = trail[i + 1].pos - a;
-                float len2 = ab.sqrMagnitude;
-                float t = len2 > 1e-6f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / len2) : 0f;
-                float d = Vector3.Distance(p, a + ab * t);
-                if (d < best)
-                {
-                    best = d;
-                    cursor = i + t;
-                }
-            }
-            dist = best;
-        }
-
-        float TrailSongTime(float c)
-        {
-            GetSegment(c, out int i, out int j, out float t);
-            return Mathf.Lerp(trail[i].songTime, trail[j].songTime, t);
-        }
-
-        float TrailDistance(float c)
-        {
-            GetSegment(c, out int i, out int j, out float t);
-            return Mathf.Lerp(trail[i].dist, trail[j].dist, t);
-        }
-
-        void GetSegment(float c, out int i, out int j, out float t)
-        {
-            i = Mathf.Clamp(Mathf.FloorToInt(c), 0, trail.Count - 1);
-            j = Mathf.Min(i + 1, trail.Count - 1);
-            t = c - i;
+            if (dt <= 0f) return;
+            float k = 1f - Mathf.Exp(-dt / Mathf.Max(0.001f, speedSmoothing));
+            playerSpeed = Mathf.Lerp(playerSpeed, Vector3.Distance(p, lastPlayerPos) / dt, k);
+            lastPlayerPos = p;
         }
 
         static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
-        // ---------------------------------------------------------------- DEBUG
-
         void OnGUI()
         {
             if (!showDebug || !running) return;
-            GUI.Label(new Rect(10, 10, 700, 24),
-                $"{State}  |  song {song.CurrentTime:F1}s  |  rate {song.CurrentRate:F2}  |  wrongness {degradationTarget:F2}  |  crumbs {trail.Count}");
+
+            string txt = State == RouteState.Arming
+                ? $"Arming | esperando el primer waypoint ({lastLateral:F1} m)"
+                : $"{State} | song {song.CurrentTime:F1}s | rate {song.CurrentRate:F2} | err {lastErr:F2}s | " +
+                  $"pathVel {progressVelocity:F2}m/s | lateral {lastLateral:F1}m | s/m {songPerMeter:F2} | " +
+                  $"wrongness {(degradation != null ? degradation.Current : 0f):F2}";
+            GUI.Label(new Rect(10, 10, 1000, 24), txt);
         }
 
         void OnDrawGizmosSelected()
         {
-            Gizmos.color = Color.red;
-            for (int i = 0; i < trail.Count; i++)
-            {
-                Gizmos.DrawSphere(trail[i].pos + Vector3.up * 0.2f, 0.12f);
-                if (i > 0) Gizmos.DrawLine(trail[i - 1].pos + Vector3.up * 0.2f, trail[i].pos + Vector3.up * 0.2f);
-            }
+            Transform t = firstWaypoint;
+            if (t == null) return;
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(t.position, startTriggerRadius);
         }
     }
 }
