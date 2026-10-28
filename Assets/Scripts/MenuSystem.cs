@@ -11,9 +11,10 @@ public class MenuSystem : MonoBehaviour
     public GameObject panelModos;         // Contiene los botones de seleccion de modo
 
     [Header("Referencias UI")]
-    public Slider volumenMusica;       // Slider para música
-    public Slider volumenSonido;       // Slider para efectos
+    public Slider volumenMusica;       // Slider para música    
     public TMP_Dropdown idiomaDropdown;   // Dropdown con Español/Inglés
+    private float volumenMinimo = 0.2f;
+    private float volumenInicial = 0.3f;
 
     public TextMeshProUGUI JugarText;
     public TextMeshProUGUI OpcionesText;
@@ -25,7 +26,6 @@ public class MenuSystem : MonoBehaviour
 
     // Textos del panel de opciones
     public TextMeshProUGUI OpcionesTitulo;
-    public TextMeshProUGUI SonidoText;
     public TextMeshProUGUI MusicaText;
     public TextMeshProUGUI IdiomaText;
 
@@ -42,6 +42,15 @@ public class MenuSystem : MonoBehaviour
 
         if (panelMenuPrincipal != null) panelMenuPrincipal.SetActive(true);
         if (panelModos != null) panelModos.SetActive(false);
+
+        if (volumenMusica != null)
+        {
+            volumenMusica.minValue = 0f;
+            volumenMusica.maxValue = 1f;
+            volumenMusica.SetValueWithoutNotify(volumenInicial);
+
+            AudioListener.volume = volumenInicial; // aplica el volumen real al iniciar
+        }
     }
 
     // Método para iniciar el juego
@@ -100,13 +109,12 @@ public class MenuSystem : MonoBehaviour
             OpcionesText.text = "Opciones";
             SalirText.text = "Salir";
 
-            fraseText.text = "Sigue el sonido, encuentra la salida";
+            fraseText.text = "Sigue la musica, llega al corazon";
 
             Cancion1Text.text = "Cancion 1";
             Cancion2Text.text = "Cancion 2";
 
             OpcionesTitulo.text = "OPCIONES";
-            SonidoText.text = "Sonido";
             MusicaText.text = "Música";
             IdiomaText.text = "Idioma";
         }
@@ -116,13 +124,12 @@ public class MenuSystem : MonoBehaviour
             OpcionesText.text = "Options";
             SalirText.text = "Exit";
 
-            fraseText.text = "Follow the sound, find the way out.";
+            fraseText.text = "Follow the music; it reaches the heart.";
 
             Cancion1Text.text = "Song 1";
             Cancion2Text.text = "Song 2";
 
             OpcionesTitulo.text = "OPTIONS";
-            SonidoText.text = "Sound";
             MusicaText.text = "Music";
             IdiomaText.text = "Language";
         }
@@ -131,13 +138,15 @@ public class MenuSystem : MonoBehaviour
     // Método para aplicar cambios de volumen
     public void CambiarVolumenMusica()
     {
-        Debug.Log("Volumen música: " + volumenMusica.value);
-        // Aquí conectas con tu AudioManager
+        // Si el usuario intenta bajar de 0.2, el botón vuelve a 0.2
+        if (volumenMusica.value < volumenMinimo)
+        {
+            volumenMusica.SetValueWithoutNotify(volumenMinimo);
+        }
+
+        float volumen = volumenMusica.value;
+        AudioListener.volume = volumen;
+        PlayerPrefs.SetFloat("VolumenMusica", volumen);
     }
 
-    public void CambiarVolumenSonido()
-    {
-        Debug.Log("Volumen sonido: " + volumenSonido.value);
-        // Aquí conectas con tu AudioManager
-    }
 }
