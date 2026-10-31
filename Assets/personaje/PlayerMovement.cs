@@ -19,8 +19,29 @@ public class PlayerMovement : MonoBehaviour
     public InputActionReference jumpAction;
     public InputActionReference interactAction;
 
+    [Header("Pasos")]
+    public AudioClip sonidoPasos;
+    [Range(0f, 1f)] public float volumenPasos = 1f;
+    [Tooltip("Velocidad horizontal mínima (m/s) para que suenen los pasos (evita sonar contra una pared).")]
+    public float velocidadMinimaPasos = 0.5f;
+    [Tooltip("Segundos que tarda en apagarse / encenderse el sonido al detenerse / empezar a caminar.")]
+    public float fundidoPasos = 0.08f;
+
     Vector3 velocity;
     bool isGrounded;
+    AudioSource fuentePasos;
+
+    void Awake()
+    {
+        if (sonidoPasos == null) return;
+
+        fuentePasos = gameObject.AddComponent<AudioSource>();
+        fuentePasos.clip = sonidoPasos;
+        fuentePasos.loop = true;
+        fuentePasos.playOnAwake = false;
+        fuentePasos.spatialBlend = 0f; // sonido 2D, siempre se oye igual
+        fuentePasos.volume = 0f;
+    }
 
     void OnEnable()
     {
@@ -34,6 +55,13 @@ public class PlayerMovement : MonoBehaviour
         moveAction.action.Disable();
         jumpAction.action.Disable();
         interactAction.action.Disable();
+
+        // Pausa o pantalla final: el jugador deja de actuar, así que los pasos también.
+        if (fuentePasos != null)
+        {
+            fuentePasos.Stop();
+            fuentePasos.volume = 0f;
+        }
     }
 
     void Update()
@@ -47,6 +75,8 @@ public class PlayerMovement : MonoBehaviour
 
         Vector2 inputMove = moveAction.action.ReadValue<Vector2>();
         Vector3 move = transform.right * inputMove.x + transform.forward * inputMove.y;
+
+        Vector3 posicionAntes = transform.position;
 
         controller.Move(move * speed * Time.deltaTime);
 
@@ -69,5 +99,29 @@ public class PlayerMovement : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
+
+        // Los pasos suenan solo si el personaje avanza de verdad (no en el aire, quieto ni contra una pared).
+        Vector3 desplazamiento = transform.position - posicionAntes;
+        desplazamiento.y = 0f;
+        float velocidadReal = Time.deltaTime > 0f ? desplazamiento.magnitude / Time.deltaTime : 0f;
+        ActualizarPasos(isGrounded && inputMove.sqrMagnitude > 0.01f && velocidadReal > velocidadMinimaPasos);
+    }
+
+    void ActualizarPasos(bool caminando)
+    {
+        if (fuentePasos == null) return;
+
+        float objetivo = caminando ? volumenPasos : 0f;
+        float paso = volumenPasos * Time.deltaTime / Mathf.Max(0.01f, fundidoPasos);
+        fuentePasos.volume = Mathf.MoveTowards(fuentePasos.volume, objetivo, paso);
+
+        if (caminando)
+        {
+            if (!fuentePasos.isPlaying) fuentePasos.Play();
+        }
+        else if (fuentePasos.isPlaying && fuentePasos.volume <= 0.001f)
+        {
+            fuentePasos.Stop();
+        }
     }
 }

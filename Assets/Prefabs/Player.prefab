@@ -140,6 +140,7 @@ MonoBehaviour:
   groundMask:
     serializedVersion: 2
     m_Bits: 64
+  sonidoPasos: {fileID: 8300000, guid: 9a4d7e21c5b34f88b1d0e6a3f7c92b15, type: 3}
   moveAction: {fileID: -7310083065565919169, guid: 2c4ef571d150cd749834f64c44c69213, type: 3}
   jumpAction: {fileID: 4254698124151524479, guid: 2c4ef571d150cd749834f64c44c69213, type: 3}
 --- !u!1 &7212182925641872123
