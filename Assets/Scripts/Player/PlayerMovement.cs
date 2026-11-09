@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(CharacterController))]
@@ -21,25 +22,42 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Pasos")]
     public AudioClip sonidoPasos;
+    public AudioClip[] variacionesPasos;
+    public AudioMixerGroup grupoSFX;
     [Range(0f, 1f)] public float volumenPasos = 1f;
+    public bool pasosIndividuales;
+    [Min(0.1f)] public float intervaloPasos = 0.42f;
+    [Range(0f, 1f)] public float variacionPitchPasos = 0.06f;
+    public float distanciaMinimaPasos = 1f;
+    public float distanciaMaximaPasos = 18f;
     [Tooltip("Velocidad horizontal mínima (m/s) para que suenen los pasos (evita sonar contra una pared).")]
     public float velocidadMinimaPasos = 0.5f;
     [Tooltip("Segundos que tarda en apagarse / encenderse el sonido al detenerse / empezar a caminar.")]
-    public float fundidoPasos = 0.08f;
+    public float fundidoPasos = 0.35f;
 
     Vector3 velocity;
     bool isGrounded;
     AudioSource fuentePasos;
+    float temporizadorPaso;
+
+    public bool IsGrounded => isGrounded;
+    public bool IsMoving { get; private set; }
+    public float HorizontalSpeed { get; private set; }
 
     void Awake()
     {
-        if (sonidoPasos == null) return;
+        if (sonidoPasos == null && (variacionesPasos == null || variacionesPasos.Length == 0)) return;
 
         fuentePasos = gameObject.AddComponent<AudioSource>();
-        fuentePasos.clip = sonidoPasos;
-        fuentePasos.loop = true;
+        fuentePasos.clip = pasosIndividuales ? null : sonidoPasos != null ? sonidoPasos : variacionesPasos[0];
+        fuentePasos.loop = !pasosIndividuales;
         fuentePasos.playOnAwake = false;
-        fuentePasos.spatialBlend = 0f; // sonido 2D, siempre se oye igual
+        fuentePasos.outputAudioMixerGroup = grupoSFX;
+        fuentePasos.spatialBlend = 1f;
+        fuentePasos.rolloffMode = AudioRolloffMode.Linear;
+        fuentePasos.minDistance = distanciaMinimaPasos;
+        fuentePasos.maxDistance = distanciaMaximaPasos;
+        fuentePasos.dopplerLevel = 0f;
         fuentePasos.volume = 0f;
     }
 
@@ -61,6 +79,7 @@ public class PlayerMovement : MonoBehaviour
         {
             fuentePasos.Stop();
             fuentePasos.volume = 0f;
+            temporizadorPaso = 0f;
         }
     }
 
@@ -104,16 +123,40 @@ public class PlayerMovement : MonoBehaviour
         Vector3 desplazamiento = transform.position - posicionAntes;
         desplazamiento.y = 0f;
         float velocidadReal = Time.deltaTime > 0f ? desplazamiento.magnitude / Time.deltaTime : 0f;
-        ActualizarPasos(isGrounded && inputMove.sqrMagnitude > 0.01f && velocidadReal > velocidadMinimaPasos);
+        HorizontalSpeed = velocidadReal;
+        IsMoving = velocidadReal > velocidadMinimaPasos;
+        ActualizarPasos(isGrounded && inputMove.sqrMagnitude > 0.01f && IsMoving, velocidadReal);
     }
 
-    void ActualizarPasos(bool caminando)
+    void ActualizarPasos(bool caminando, float velocidadReal)
     {
         if (fuentePasos == null) return;
+
+        if (pasosIndividuales)
+        {
+            fuentePasos.volume = volumenPasos;
+            if (!caminando)
+            {
+                temporizadorPaso = 0f;
+                return;
+            }
+
+            temporizadorPaso -= Time.deltaTime;
+            if (temporizadorPaso <= 0f)
+            {
+                ReproducirPaso();
+                temporizadorPaso = Mathf.Lerp(intervaloPasos, intervaloPasos * 0.65f,
+                    Mathf.InverseLerp(velocidadMinimaPasos, Mathf.Max(speed, velocidadMinimaPasos), velocidadReal));
+            }
+            return;
+        }
 
         float objetivo = caminando ? volumenPasos : 0f;
         float paso = volumenPasos * Time.deltaTime / Mathf.Max(0.01f, fundidoPasos);
         fuentePasos.volume = Mathf.MoveTowards(fuentePasos.volume, objetivo, paso);
+        fuentePasos.pitch = caminando
+            ? Mathf.Lerp(0.85f, 1.2f, Mathf.InverseLerp(velocidadMinimaPasos, Mathf.Max(speed, velocidadMinimaPasos), velocidadReal))
+            : 1f;
 
         if (caminando)
         {
@@ -123,5 +166,16 @@ public class PlayerMovement : MonoBehaviour
         {
             fuentePasos.Stop();
         }
+    }
+
+    void ReproducirPaso()
+    {
+        AudioClip clip = variacionesPasos != null && variacionesPasos.Length > 0
+            ? variacionesPasos[Random.Range(0, variacionesPasos.Length)]
+            : sonidoPasos;
+        if (clip == null) return;
+
+        fuentePasos.pitch = Random.Range(1f - variacionPitchPasos, 1f + variacionPitchPasos);
+        fuentePasos.PlayOneShot(clip);
     }
 }

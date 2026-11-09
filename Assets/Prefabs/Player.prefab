@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 8356793277667952813}
   - component: {fileID: 4907316362742919584}
   - component: {fileID: 6942784049291924936}
+  - component: {fileID: -6100000000000000000}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -141,8 +142,46 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   sonidoPasos: {fileID: 8300000, guid: 9a4d7e21c5b34f88b1d0e6a3f7c92b15, type: 3}
+  variacionesPasos: []
+  grupoSFX: {fileID: 1187654321098765432, guid: eacd30791aab9554c9ecaa0f09ead168, type: 2}
+  volumenPasos: 1
+  pasosIndividuales: 0
+  intervaloPasos: 0.42
+  variacionPitchPasos: 0.06
+  distanciaMinimaPasos: 1
+  distanciaMaximaPasos: 18
+  velocidadMinimaPasos: 0.5
+  fundidoPasos: 0.35
   moveAction: {fileID: -7310083065565919169, guid: 2c4ef571d150cd749834f64c44c69213, type: 3}
   jumpAction: {fileID: 4254698124151524479, guid: 2c4ef571d150cd749834f64c44c69213, type: 3}
+--- !u!114 &-6100000000000000000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 853119226577823561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 020cdc611b677074198b0fb3b5debecf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ImmersiveAudioController
+  mixer: {fileID: 24100000, guid: eacd30791aab9554c9ecaa0f09ead168, type: 2}
+  grupoSFX: {fileID: 1187654321098765432, guid: eacd30791aab9554c9ecaa0f09ead168, type: 2}
+  clipRespiracion: {fileID: 0}
+  respiracionProcedural: 1
+  volumenRespiracion: 0.08
+  duracionFadeRespiracion: 1.2
+  amplitudRespiracionCamara: 0.012
+  frecuenciaRespiracionCamara: 0.22
+  volumenNavegacion: 0.3
+  duracionDucking: 0.45
+  duckingDb: -5
+  ambientes: []
+  puntosAmbiente: []
+  distanciaMinimaAmbiente: 2
+  distanciaMaximaAmbiente: 24
+  zonasReverb: []
 --- !u!1 &7212182925641872123
 GameObject:
   m_ObjectHideFlags: 0

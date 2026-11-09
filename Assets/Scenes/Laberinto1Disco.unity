@@ -6260,12 +6260,20 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
       propertyPath: speed
-      value: 2
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
+      propertyPath: volumenPasos
+      value: 0.4
       objectReference: {fileID: 0}
     - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
       propertyPath: interactAction
       value: 
       objectReference: {fileID: 6388367203384324881, guid: 2c4ef571d150cd749834f64c44c69213, type: 3}
+    - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
+      propertyPath: velocidadMinimaPasos
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 8043867993935096567, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
       propertyPath: m_TagString
       value: MainCamera
