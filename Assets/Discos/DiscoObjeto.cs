@@ -55,6 +55,11 @@ public class InteractableItem : MonoBehaviour
         gameObject.SetActive(false);
     }
 
+    void OnValidate()
+    {
+        distanciaInteraccion = Mathf.Max(0f, distanciaInteraccion);
+    }
+
     static bool PulsoInteractuar()
     {
         Keyboard teclado = Keyboard.current;
@@ -68,7 +73,7 @@ public class InteractableItem : MonoBehaviour
     // No se puede agarrar con el juego en pausa o con una pantalla final abierta (el jugador está desactivado).
     bool JugadorPuedeInteractuar()
     {
-        if (jugador == null) jugador = FindFirstObjectByType<PlayerMovement>();
+        if (jugador == null) jugador = FindAnyObjectByType<PlayerMovement>();
         return jugador != null && jugador.enabled;
     }
 

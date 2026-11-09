@@ -28,16 +28,27 @@ namespace Resonance
     {
         [SerializeField] AudioMixer mixer;
         [SerializeField] MixerParam[] parameters;
-        [Tooltip("Constante de tiempo (s) al empeorar. Pequeña = distorsión casi instantánea.")]
-        [SerializeField] float attackSeconds = 0.08f;
-        [Tooltip("Constante de tiempo (s) al recuperarse. Da una bajada progresiva pero ágil.")]
-        [SerializeField] float releaseSeconds = 0.25f;
+        [Tooltip("Constante de tiempo (s) al empeorar. Un valor mayor produce una transición más gradual.")]
+        [SerializeField] float attackSeconds = 0.3f;
+        [Tooltip("Constante de tiempo (s) al recuperarse.")]
+        [SerializeField] float releaseSeconds = 0.7f;
+        [Tooltip("Variación lenta y sutil sobre la degradación. Se aplica solo cuando hay alejamiento de la ruta.")]
+        [SerializeField, Range(0f, 0.2f)] float dynamicVariation = 0.06f;
+        [SerializeField] float variationSpeed = 0.18f;
 
         /// <summary>0 = música limpia, 1 = totalmente degradada.</summary>
         public float Target { get; set; }
         public float Current => current;
 
+        public bool TryGetMusicVolume(out float value)
+        {
+            value = musicVolume;
+            return hasMusicVolume;
+        }
+
         float current;
+        float musicVolume;
+        bool hasMusicVolume;
 
         void Reset()
         {
@@ -56,7 +67,15 @@ namespace Resonance
         {
             float tau = Target > current ? attackSeconds : releaseSeconds;
             float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, tau));
-            current = Mathf.Lerp(current, Mathf.Clamp01(Target), k);
+            float target = Mathf.Clamp01(Target);
+            if (target > 0f && dynamicVariation > 0f)
+            {
+                float variation = (Mathf.PerlinNoise(Time.time * variationSpeed, 0.37f) * 2f - 1f)
+                    * dynamicVariation * Mathf.Clamp01(target * 1.5f);
+                target = Mathf.Clamp01(target + variation);
+            }
+
+            current = Mathf.Lerp(current, target, k);
             Apply(current);
         }
 
@@ -64,6 +83,7 @@ namespace Resonance
         {
             if (mixer == null || parameters == null) return;
 
+            hasMusicVolume = false;
             foreach (var p in parameters)
             {
                 if (string.IsNullOrEmpty(p.exposedName)) continue;
@@ -76,7 +96,19 @@ namespace Resonance
                     v = Mathf.Lerp(p.cleanValue, p.wrongValue, k);
 
                 mixer.SetFloat(p.exposedName, v);
+                if (p.exposedName == "MusicVolume")
+                {
+                    musicVolume = v;
+                    hasMusicVolume = true;
+                }
             }
+        }
+
+        void OnValidate()
+        {
+            attackSeconds = Mathf.Max(0.001f, attackSeconds);
+            releaseSeconds = Mathf.Max(0.001f, releaseSeconds);
+            variationSpeed = Mathf.Max(0f, variationSpeed);
         }
     }
 }

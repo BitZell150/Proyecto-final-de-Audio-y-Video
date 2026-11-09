@@ -17,8 +17,6 @@ namespace Resonance
         }
 
         [SerializeField] Transform[] waypoints;
-        [Tooltip("Progreso normalizado (0..1) -> posición normalizada en el tramo de canción (0..1). Permite anclar hitos musicales.")]
-        public AnimationCurve progressToSong = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
         Vector3[] pts;
         float[] cum;

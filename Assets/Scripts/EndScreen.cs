@@ -63,12 +63,12 @@ public class EndScreen : MonoBehaviour, IMenuNavegable
 
     void Start()
     {
-        director = FindFirstObjectByType<ResonanceMusicDirector>();
-        pausa = FindFirstObjectByType<PauseMenu>();
+        director = FindAnyObjectByType<ResonanceMusicDirector>();
+        pausa = FindAnyObjectByType<PauseMenu>();
         if (director == null) Debug.LogWarning("[EndScreen] No hay ResonanceMusicDirector en la escena.");
 
         // La canción es el tiempo límite: si termina antes de tocar el trofeo, es game over.
-        song = FindFirstObjectByType<ReversibleSongPlayer>();
+        song = FindAnyObjectByType<ReversibleSongPlayer>();
         if (song != null) song.SongEnded += AlTerminarCancion;
     }
 
@@ -126,9 +126,9 @@ public class EndScreen : MonoBehaviour, IMenuNavegable
 
         // El jugador no debe moverse ni mirar. La música no se toca: en victoria termina de sonar.
         bloqueados.Clear();
-        BloquearSiActivo(FindFirstObjectByType<MouseLook>());
-        BloquearSiActivo(FindFirstObjectByType<PlayerMovement>());
-        BloquearSiActivo(FindFirstObjectByType<Interaccion>());
+        BloquearSiActivo(FindAnyObjectByType<MouseLook>());
+        BloquearSiActivo(FindAnyObjectByType<PlayerMovement>());
+        BloquearSiActivo(FindAnyObjectByType<Interaccion>());
 
         AplicarTextos();
         grupo.alpha = 0f;

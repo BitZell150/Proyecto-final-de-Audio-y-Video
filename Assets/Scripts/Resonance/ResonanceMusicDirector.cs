@@ -40,8 +40,8 @@ namespace Resonance
         [SerializeField] float searchWindow = 15f;
 
         [Header("Distorsión (sin cambios)")]
-        [SerializeField] float safeRadius = 1f;
-        [SerializeField] float fullWrongRadius = 4f;
+        [SerializeField] float safeRadius = 1.5f;
+        [SerializeField] float fullWrongRadius = 8f;
 
         [Header("Movimiento")]
         [Tooltip("Suavizado (s) de la velocidad del jugador.")]
@@ -94,12 +94,22 @@ namespace Resonance
 
         public void Begin()
         {
-            route.Rebuild();
-            if (route.WaypointCount < 2)
+            if (player == null || route == null || song == null)
             {
-                Debug.LogError("[Resonance] La ruta necesita al menos 2 waypoints.");
+                Debug.LogError("[Resonance] Faltan referencias: player, route y song son obligatorias.");
+                running = false;
                 return;
             }
+
+            route.Rebuild();
+            if (route.WaypointCount < 2 || route.Length <= 0f)
+            {
+                Debug.LogError("[Resonance] La ruta necesita al menos 2 waypoints.");
+                running = false;
+                return;
+            }
+
+            song.Stop();
 
             rec = new float[route.WaypointCount];
             song.SongEnded -= OnSongEnded;
@@ -110,6 +120,11 @@ namespace Resonance
             timeUpPending = false;
             onRoute = false;
             retreating = false;
+            retreatTimer = 0f;
+            retreatLowest = 0f;
+            lastProgress = 0f;
+            frontierProgress = 0f;
+            frontierTime = 0f;
             State = MusicState.Arming;
             running = true;
         }
@@ -186,10 +201,11 @@ namespace Resonance
             float prog = route.Project(p, 0f, searchWindow, out var s) ? s.progress : 0f;
             song.Begin(songStartTime);
 
-            rec[0] = songStartTime;
+            float actualStartTime = song.CurrentTime;
+            rec[0] = actualStartTime;
             reachedIndex = 0;
             frontierProgress = prog;
-            frontierTime = songStartTime;
+            frontierTime = actualStartTime;
             lastProgress = prog;
             onRoute = true;
             retreating = false;
@@ -239,7 +255,7 @@ namespace Resonance
                 // Retroceder desde la posición ACTUAL hacia el segundo guardado de este punto de la ruta.
                 float target = RecordedTimeAt(p);
                 float err = target - song.CurrentTime;   // negativo: la canción debe retroceder
-                float rate = moving ? Mathf.Clamp(err * reverseGain, -maxReverseRate, 0f) : 0f;
+                float rate = moving ? Mathf.Clamp(err * reverseGain, -maxReverseRate, maxReverseRate) : 0f;
                 song.SetDesiredRate(rate);
                 State = MusicState.Retreating;
             }
@@ -288,9 +304,12 @@ namespace Resonance
         // Coloca la punta en p con el segundo actual y descarta los waypoints guardados por delante.
         void SetHead(float p)
         {
+            int previousReachedIndex = reachedIndex;
             frontierProgress = p;
             frontierTime = song.CurrentTime;
             while (reachedIndex > 0 && !Reached(reachedIndex, p)) reachedIndex--;
+
+            for (int i = reachedIndex + 1; i <= previousReachedIndex; i++) rec[i] = 0f;
         }
 
         // Segundo de canción asociado a un punto de la ruta (interpolando entre waypoints guardados).
@@ -319,6 +338,24 @@ namespace Resonance
         }
 
         static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
+
+        void OnValidate()
+        {
+            startTriggerRadius = Mathf.Max(0f, startTriggerRadius);
+            insideRadius = Mathf.Max(0f, insideRadius);
+            exitRadius = Mathf.Max(insideRadius, exitRadius);
+            searchWindow = Mathf.Max(0.01f, searchWindow);
+            safeRadius = Mathf.Max(0f, safeRadius);
+            fullWrongRadius = Mathf.Max(safeRadius, fullWrongRadius);
+            speedSmoothing = Mathf.Max(0.001f, speedSmoothing);
+            minMoveSpeed = Mathf.Max(0f, minMoveSpeed);
+            waypointTolerance = Mathf.Max(0f, waypointTolerance);
+            retreatEnterDistance = Mathf.Max(0f, retreatEnterDistance);
+            retreatConfirmSeconds = Mathf.Max(0f, retreatConfirmSeconds);
+            retreatExitDistance = Mathf.Max(0f, retreatExitDistance);
+            reverseGain = Mathf.Max(0f, reverseGain);
+            maxReverseRate = Mathf.Max(0f, maxReverseRate);
+        }
 
         // ------------------------------------------------------------ DEBUG
 

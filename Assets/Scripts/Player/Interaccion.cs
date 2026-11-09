@@ -20,16 +20,19 @@ public class Interaccion : MonoBehaviour
 
     void OnEnable()
     {
-        interactAction.action.performed += HandleInteraction;
+        if (interactAction != null) interactAction.action.performed += HandleInteraction;
     }
 
     void OnDisable()
     {
-        interactAction.action.performed -= HandleInteraction;
+        if (interactAction != null) interactAction.action.performed -= HandleInteraction;
     }
 
     private void HandleInteraction(InputAction.CallbackContext context)
     {
+        if (mainCamera == null) mainCamera = Camera.main;
+        if (mainCamera == null) return;
+
         // Dibuja una línea roja en la pestaña "Scene" de Unity que dura 2 segundos
         Debug.DrawRay(mainCamera.transform.position, mainCamera.transform.forward * interactionDistance, Color.red, 2f);
 
@@ -38,7 +41,7 @@ public class Interaccion : MonoBehaviour
 
         if (Physics.Raycast(ray, out hit, interactionDistance, interactableLayer))
         {
-            InteractableItem item = hit.collider.GetComponent<InteractableItem>();
+            InteractableItem item = hit.collider.GetComponentInParent<InteractableItem>();
             if (item != null)
             {
                 item.PickUp();

@@ -173,7 +173,7 @@ MonoBehaviour:
   volumenRespiracion: 0.08
   duracionFadeRespiracion: 1.2
   amplitudRespiracionCamara: 0.012
-  frecuenciaRespiracionCamara: 0.22
+  frecuenciaRespiracionCamara: 0.5
   volumenNavegacion: 0.3
   duracionDucking: 0.45
   duckingDb: -5

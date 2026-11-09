@@ -15,7 +15,7 @@ public class ImmersiveAudioController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] float volumenRespiracion = 0.08f;
     [SerializeField] float duracionFadeRespiracion = 1.2f;
     [SerializeField] float amplitudRespiracionCamara = 0.012f;
-    [SerializeField] float frecuenciaRespiracionCamara = 0.22f;
+    [SerializeField] float frecuenciaRespiracionCamara = 0.5f;
 
     [Header("Navegacion")]
     [SerializeField, Range(0f, 1f)] float volumenNavegacion = 0.3f;
@@ -39,6 +39,8 @@ public class ImmersiveAudioController : MonoBehaviour
     ResonanceMusicDirector director;
     MusicDegradation degradation;
     float duckTimer;
+    float lastDuckingAmount;
+    bool lastDuckingUsedMixerValue;
     ResonanceMusicDirector.MusicState lastState;
     bool hasState;
 
@@ -79,7 +81,8 @@ public class ImmersiveAudioController : MonoBehaviour
         float fadeSpeed = volumenRespiracion / Mathf.Max(0.01f, duracionFadeRespiracion);
         respiracion.volume = Mathf.MoveTowards(respiracion.volume, breathingTarget * volumenRespiracion, Time.deltaTime * fadeSpeed);
         respiracion.pitch = Mathf.Lerp(0.96f, 1.04f, breathingTarget);
-        ActualizarMovimientoCamara(breathingTarget);
+        float breathingTime = respiracion != null && respiracion.clip != null ? respiracion.time : Time.time;
+        ActualizarMovimientoCamara(breathingTarget, breathingTime);
 
         if (director != null && (!hasState || lastState != director.State))
         {
@@ -128,22 +131,31 @@ public class ImmersiveAudioController : MonoBehaviour
         duckTimer = duracionDucking;
     }
 
-    void ActualizarMovimientoCamara(float breathingTarget)
+    void ActualizarMovimientoCamara(float breathingTarget, float breathingTime)
     {
         if (camara == null) return;
 
         float weight = Mathf.SmoothStep(0f, 1f, breathingTarget);
-        float phase = Time.time * frecuenciaRespiracionCamara * Mathf.PI * 2f;
+        float phase = breathingTime * frecuenciaRespiracionCamara * Mathf.PI * 2f;
         Vector3 offset = new Vector3(0f, Mathf.Sin(phase), Mathf.Cos(phase) * 0.25f)
             * (amplitudRespiracionCamara * weight);
-        camara.transform.localPosition = Vector3.Lerp(camara.transform.localPosition, posicionBaseCamara + offset, Time.deltaTime * 5f);
+        camara.transform.localPosition = Vector3.Lerp(camara.transform.localPosition, posicionBaseCamara + offset, Time.deltaTime * 12f);
     }
 
     void ApplyDucking()
     {
-        if (mixer == null || !mixer.GetFloat("MusicVolume", out float baseVolume)) return;
+        if (mixer == null) return;
+
+        float baseVolume = 0f;
+        bool hasBaseVolume = degradation != null && degradation.TryGetMusicVolume(out baseVolume);
+        if (!hasBaseVolume && !mixer.GetFloat("MusicVolume", out baseVolume)) return;
+        if (!hasBaseVolume && lastDuckingUsedMixerValue)
+            baseVolume -= duckingDb * lastDuckingAmount;
+
         float amount = Mathf.Clamp01(duckTimer / Mathf.Max(0.01f, duracionDucking));
         mixer.SetFloat("MusicVolume", baseVolume + duckingDb * amount);
+        lastDuckingAmount = amount;
+        lastDuckingUsedMixerValue = !hasBaseVolume;
     }
 
     void ConfigureAmbientSources()
@@ -213,7 +225,7 @@ public class ImmersiveAudioController : MonoBehaviour
     static AudioClip CreateBreathingClip()
     {
         const int sampleRate = 44100;
-        const float duration = 4f;
+        const float duration = 2f;
         int samples = Mathf.RoundToInt(sampleRate * duration);
         var data = new float[samples];
         var random = new System.Random(17);

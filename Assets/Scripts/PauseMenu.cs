@@ -97,9 +97,9 @@ public class PauseMenu : MonoBehaviour, IMenuNavegable
 
         // El jugador no debe moverse ni mirar mientras el menú está abierto.
         bloqueados.Clear();
-        BloquearSiActivo(FindFirstObjectByType<MouseLook>());
-        BloquearSiActivo(FindFirstObjectByType<PlayerMovement>());
-        BloquearSiActivo(FindFirstObjectByType<Interaccion>());
+        BloquearSiActivo(FindAnyObjectByType<MouseLook>());
+        BloquearSiActivo(FindAnyObjectByType<PlayerMovement>());
+        BloquearSiActivo(FindAnyObjectByType<Interaccion>());
 
         inputManager.Destino = this;
         inputManager.enabled = true;   // OnEnable suelta el cursor

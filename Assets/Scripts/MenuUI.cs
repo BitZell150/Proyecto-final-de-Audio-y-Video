@@ -45,7 +45,7 @@ public static class MenuUI
     /// <summary>Busca (o crea) el EventSystem y le añade un MenuInputManager desactivado.</summary>
     public static MenuInputManager PrepararEventSystem()
     {
-        EventSystem es = Object.FindFirstObjectByType<EventSystem>();
+        EventSystem es = Object.FindAnyObjectByType<EventSystem>();
         if (es == null)
         {
             GameObject go = new GameObject("EventSystem");

@@ -49,6 +49,8 @@ namespace Resonance
         public bool IsRunning => running;
         public bool IsPaused => paused;
 
+        float EffectiveEdgeMargin => Mathf.Min(Mathf.Max(0f, edgeMarginSeconds), Length * 0.5f);
+
         void Awake()
         {
             source = GetComponent<AudioSource>();
@@ -83,6 +85,17 @@ namespace Resonance
             running = true;
         }
 
+        public void Stop()
+        {
+            if (source != null) source.Stop();
+            running = false;
+            paused = false;
+            currentRate = 0f;
+            desiredRate = 0f;
+            rateVelocity = 0f;
+            endReported = false;
+        }
+
         /// <summary>Velocidad deseada: 1 = normal, -1 = marcha atrás, 0 = pausa (posición exacta).</summary>
         public void SetDesiredRate(float rate)
         {
@@ -101,8 +114,9 @@ namespace Resonance
             if (!running) return;
 
             float t = CurrentTime;
-            bool atEnd = t >= Length - edgeMarginSeconds;
-            bool atStart = t <= edgeMarginSeconds;
+            float margin = EffectiveEdgeMargin;
+            bool atEnd = t >= Length - margin;
+            bool atStart = t <= margin;
 
             float target = desiredRate;
             if (atEnd && target > 0f) target = 0f;
@@ -122,7 +136,7 @@ namespace Resonance
                 endReported = true;
                 SongEnded?.Invoke();
             }
-            else if (endReported && t < Length - edgeMarginSeconds - 0.5f)
+            else if (endReported && t < Length - margin - 0.5f)
             {
                 endReported = false;
             }
@@ -158,7 +172,15 @@ namespace Resonance
             else source.pitch = Mathf.Min(rate, -0.01f);
         }
 
-        float ClampTime(float t) => Mathf.Clamp(t, edgeMarginSeconds, Mathf.Max(edgeMarginSeconds, Length - edgeMarginSeconds));
+        void OnValidate()
+        {
+            maxAbsRate = Mathf.Clamp(maxAbsRate, 0.01f, 3f);
+            rateSmoothSeconds = Mathf.Max(0f, rateSmoothSeconds);
+            fadeBelowRate = Mathf.Max(0.001f, fadeBelowRate);
+            edgeMarginSeconds = Mathf.Max(0f, edgeMarginSeconds);
+        }
+
+        float ClampTime(float t) => Mathf.Clamp(t, EffectiveEdgeMargin, Mathf.Max(EffectiveEdgeMargin, Length - EffectiveEdgeMargin));
         int ToSample(float t) => Mathf.Clamp((int)(t * clip.frequency), 0, clip.samples - 1);
     }
 }
