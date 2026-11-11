@@ -12,16 +12,14 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
 {
     public const string ClaveIdioma = "Idioma"; // 0 = Español, 1 = Inglés (lo lee también PauseMenu)
 
-    public GameObject opcionesPanel;   // Panel que se activa/desactiva
+    public GameObject opcionesPanel;      // Panel que se activa/desactiva
     public GameObject panelMenuPrincipal; // Contiene los botones Jugar / Opciones / Salir
-    public GameObject panelModos;         // Contiene los botones de seleccion de modo
 
-    [Header("Escenas (deben estar en Build Settings)")]
-    public string escenaModo1 = "Laberinto1Disco";
-    public string escenaModo2 = "Laberinto2Disco";
+    [Header("Escena (debe estar en Build Settings)")]
+    public string escenaJuego = "Laberinto1Disco";
 
     [Header("Referencias UI")]
-    public Slider volumenMusica;       // Slider para música
+    public Slider volumenMusica;          // Slider para música
     public TMP_Dropdown idiomaDropdown;   // Dropdown con Español/Inglés
     private float volumenMinimo = 0.2f;
     private float volumenInicial = 0.3f;
@@ -31,16 +29,11 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
     public TextMeshProUGUI SalirText;
 
     public TMP_Text fraseText;
-    public TMP_Text Cancion1Text;
-    public TMP_Text Cancion2Text;
 
     // Textos del panel de opciones
     public TextMeshProUGUI OpcionesTitulo;
     public TextMeshProUGUI MusicaText;
     public TextMeshProUGUI IdiomaText;
-
-    public TextMeshProUGUI Cancion1;
-    public TextMeshProUGUI Cancion2;
 
     GameObject seleccionPrevia; // Botón seleccionado antes de abrir las opciones
 
@@ -51,13 +44,8 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         Time.timeScale = 1f;
 
         // Ocultar el panel al inicio
-        if (opcionesPanel != null)
-        {
-            opcionesPanel.SetActive(false);
-        }
-
+        if (opcionesPanel != null) opcionesPanel.SetActive(false);
         if (panelMenuPrincipal != null) panelMenuPrincipal.SetActive(true);
-        if (panelModos != null) panelModos.SetActive(false);
 
         float volumen = Mathf.Clamp(PlayerPrefs.GetFloat("VolumenMusica", volumenInicial), volumenMinimo, 1f);
 
@@ -78,33 +66,10 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         }
     }
 
-    // Método para iniciar el juego: muestra la selección de modo
+    // Botón Jugar: carga directamente la escena del juego
     public void Jugar()
     {
-        if (panelMenuPrincipal != null) panelMenuPrincipal.SetActive(false);
-        if (panelModos != null) panelModos.SetActive(true);
-
-        SeleccionarPrimero();
-    }
-
-    public void VolverAlMenuPrincipal()
-    {
-        if (panelModos != null) panelModos.SetActive(false);
-        if (panelMenuPrincipal != null) panelMenuPrincipal.SetActive(true);
-
-        SeleccionarPrimero();
-    }
-
-    public void SeleccionarModo1()
-    {
-        PlayerPrefs.SetInt("ModoSeleccionado", 1);
-        CargarEscena(escenaModo1);
-    }
-
-    public void SeleccionarModo2()
-    {
-        PlayerPrefs.SetInt("ModoSeleccionado", 2);
-        CargarEscena(escenaModo2);
+        CargarEscena(escenaJuego);
     }
 
     private void CargarEscena(string nombreEscena)
@@ -161,16 +126,12 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         }
     }
 
-    // Vuelve atrás (botón B del mando / Escape): cierra opciones o sale de la selección de modo.
+    // Vuelve atrás (botón B del mando / Escape): cierra opciones.
     public void Atras()
     {
         if (opcionesPanel != null && opcionesPanel.activeSelf)
         {
             Opciones();
-        }
-        else if (panelModos != null && panelModos.activeSelf)
-        {
-            VolverAlMenuPrincipal();
         }
     }
 
@@ -180,7 +141,6 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         GameObject raiz = null;
 
         if (opcionesPanel != null && opcionesPanel.activeSelf) raiz = opcionesPanel;
-        else if (panelModos != null && panelModos.activeSelf) raiz = panelModos;
         else if (panelMenuPrincipal != null && panelMenuPrincipal.activeSelf) raiz = panelMenuPrincipal;
 
         return raiz != null ? raiz.GetComponentInChildren<Selectable>() : null;
@@ -217,10 +177,7 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
             OpcionesText.text = "Opciones";
             SalirText.text = "Salir";
 
-            fraseText.text = "Sigue la musica, llega al corazon";
-
-            Cancion1Text.text = "Cancion 1";
-            Cancion2Text.text = "Cancion 2";
+            fraseText.text = "Sigue la música, llega al corazón";
 
             OpcionesTitulo.text = "OPCIONES";
             MusicaText.text = "Música";
@@ -233,9 +190,6 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
             SalirText.text = "Exit";
 
             fraseText.text = "Follow the music; it reaches the heart.";
-
-            Cancion1Text.text = "Song 1";
-            Cancion2Text.text = "Song 2";
 
             OpcionesTitulo.text = "OPTIONS";
             MusicaText.text = "Music";
@@ -256,5 +210,4 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         AudioListener.volume = volumen;
         PlayerPrefs.SetFloat("VolumenMusica", volumen);
     }
-
 }
