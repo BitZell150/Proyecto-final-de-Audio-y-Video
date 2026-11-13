@@ -367,6 +367,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 2072418575854221751, guid: 6a06b99a9c80453448dbec80dec47f8d, type: 3}
+      propertyPath: escenaDestino
+      value: Laberinto2Disco
+      objectReference: {fileID: 0}
+    - target: {fileID: 2072418575854221751, guid: 6a06b99a9c80453448dbec80dec47f8d, type: 3}
       propertyPath: nextItemToSpawn
       value: 
       objectReference: {fileID: 0}
@@ -1254,6 +1258,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
+      propertyPath: escenaDestino
+      value: Laberinto1Disco
+      objectReference: {fileID: 0}
     - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
       propertyPath: nextItemToSpawn
       value: 

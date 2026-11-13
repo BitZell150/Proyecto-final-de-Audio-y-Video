@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(Collider))]
 public class InteractableItem : MonoBehaviour
@@ -11,6 +12,10 @@ public class InteractableItem : MonoBehaviour
     [Header("Secuencia")]
     [Tooltip("Arrastra aquí el siguiente objeto que debe aparecer. Déjalo vacío si es el último.")]
     public GameObject nextItemToSpawn;
+
+    [Header("Cambio de escena")]
+    [Tooltip("Nombre exacto de la escena a cargar al recoger el disco")]
+    public string escenaDestino = "";
 
     [Header("Interacción")]
     [Tooltip("Distancia máxima (m) desde la cámara para poder agarrar el disco con E / X (mando).")]
@@ -53,6 +58,19 @@ public class InteractableItem : MonoBehaviour
 
         // 2. Desactivar el objeto actual
         gameObject.SetActive(false);
+
+        // 3. Cargar otra escena (si se indicó una)
+        if (!string.IsNullOrEmpty(escenaDestino))
+        {
+            if (Application.CanStreamedLevelBeLoaded(escenaDestino))
+            {
+                SceneManager.LoadScene(escenaDestino);
+            }
+            else
+            {
+                Debug.LogError($"[InteractableItem] La escena '{escenaDestino}' no está en Build Settings.");
+            }
+        }
     }
 
     void OnValidate()
