@@ -428,7 +428,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
       propertyPath: speed
-      value: 3
+      value: 6.11
       objectReference: {fileID: 0}
     - target: {fileID: 6942784049291924936, guid: 27d9eea76c378aa468f9d2a03735ee0d, type: 3}
       propertyPath: volumenPasos
