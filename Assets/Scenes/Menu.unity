@@ -775,22 +775,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MenuSystem
   opcionesPanel: {fileID: 1373082741}
   panelMenuPrincipal: {fileID: 92130873}
-  panelModos: {fileID: 0}
-  escenaModo1: Laberinto1Disco
-  escenaModo2: Laberinto2Disco
+  escenaJuego: CuartoDiscos
   volumenMusica: {fileID: 2061800480}
   idiomaDropdown: {fileID: 219678453}
   JugarText: {fileID: 14170282}
   OpcionesText: {fileID: 2013765611}
   SalirText: {fileID: 551095828}
   fraseText: {fileID: 2004495258}
-  Cancion1Text: {fileID: 0}
-  Cancion2Text: {fileID: 0}
   OpcionesTitulo: {fileID: 360156481}
   MusicaText: {fileID: 105124320}
   IdiomaText: {fileID: 4029458}
-  Cancion1: {fileID: 0}
-  Cancion2: {fileID: 0}
 --- !u!1 &105124318
 GameObject:
   m_ObjectHideFlags: 0

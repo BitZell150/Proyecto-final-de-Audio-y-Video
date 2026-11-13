@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Scenes/Menu.unity
     guid: e71e944352fc108438ea3ac0544c9b38
   - enabled: 1
+    path: Assets/Scenes/CuartoDiscos.unity
+    guid: 2a0d5cd4b5dc04945861e4171d03a182
+  - enabled: 1
     path: Assets/Scenes/Laberinto1Disco.unity
     guid: 14161634461b8b047bb1c8f054f44bcc
   - enabled: 1
