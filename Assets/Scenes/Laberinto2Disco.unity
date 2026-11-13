@@ -8755,6 +8755,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
+      propertyPath: escenaDestino
+      value: Laberinto1Disco
+      objectReference: {fileID: 0}
+    - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
       propertyPath: nextItemToSpawn
       value: 
       objectReference: {fileID: 619967588}
