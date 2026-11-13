@@ -16,7 +16,7 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
     public GameObject panelMenuPrincipal; // Contiene los botones Jugar / Opciones / Salir
 
     [Header("Escena (debe estar en Build Settings)")]
-    public string escenaJuego = "CuartoD";
+    public string escenaJuego = "CuartoDiscos";
 
     [Header("Referencias UI")]
     public Slider volumenMusica;          // Slider para música
