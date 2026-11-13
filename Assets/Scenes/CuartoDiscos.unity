@@ -1019,6 +1019,56 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.0117360875, y: 0.19474569, z: 0.22000684}
   m_Center: {x: -0.0000000027939677, y: 0.000000007450581, z: 4.656613e-10}
+--- !u!1 &1759191044
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1759191046}
+  - component: {fileID: 1759191045}
+  m_Layer: 0
+  m_Name: PauseMenu
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1759191045
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1759191044}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b3f6d1e4a7c4259b0e2d9f5a1c63e74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PauseMenu
+  escenaMenu: Menu
+  fuente: {fileID: 11400000, guid: eb58b557d8013f249be81b31a29ffabc, type: 2}
+  fuenteTitulo: {fileID: 11400000, guid: c4da71fcec554304aab70c9b988f8bd6, type: 2}
+  spriteBoton: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  spriteFondo: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  spriteKnob: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
+--- !u!4 &1759191046
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1759191044}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1792993426
 GameObject:
   m_ObjectHideFlags: 0
@@ -1338,3 +1388,4 @@ SceneRoots:
   - {fileID: 252742152}
   - {fileID: 1998428890}
   - {fileID: 1792993429}
+  - {fileID: 1759191046}
