@@ -1,4 +1,5 @@
 using Resonance;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -17,10 +18,18 @@ public class ImmersiveAudioController : MonoBehaviour
     [SerializeField] float amplitudRespiracionCamara = 0.012f;
     [SerializeField] float frecuenciaRespiracionCamara = 0.5f;
 
-    [Header("Navegacion")]
+    [Header("Avisos de estado")]
     [SerializeField, Range(0f, 1f)] float volumenNavegacion = 0.3f;
     [SerializeField] float duracionDucking = 0.45f;
     [SerializeField] float duckingDb = -5f;
+
+    [Header("Guia de ruta 3D")]
+    [Tooltip("Baliza diegética que aparece en el punto de la ruta más cercano solo al salirse de ella.")]
+    [SerializeField] bool guia3DActiva = true;
+    [SerializeField, Range(0f, 1f)] float volumenGuia3D = 0.12f;
+    [SerializeField] float distanciaMinimaGuia = 1.5f;
+    [SerializeField] float distanciaMaximaGuia = 14f;
+    [SerializeField] float fundidoGuia = 0.35f;
 
     [Header("Ambientes 3D")]
     [SerializeField] AudioClip[] ambientes;
@@ -33,6 +42,12 @@ public class ImmersiveAudioController : MonoBehaviour
 
     AudioSource respiracion;
     AudioSource navegacion;
+    AudioSource guiaRuta;
+    GameObject objetoGuiaRuta;
+    AudioClip tonoExito;
+    AudioClip tonoTiempoAgotado;
+    AudioClip tonoGuia;
+    readonly List<AudioSource> fuentesAmbiente = new();
     PlayerMovement movimiento;
     Camera camara;
     Vector3 posicionBaseCamara;
@@ -53,7 +68,11 @@ public class ImmersiveAudioController : MonoBehaviour
         if (camara != null) posicionBaseCamara = camara.transform.localPosition;
 
         respiracion = CreateSource("Breathing", false, 0.15f, 8f);
-        navegacion = CreateSource("Navigation", true, 1f, 12f);
+        // Es una confirmación de estado interna, no una fuente situada en el mundo.
+        navegacion = CreateSource("Navigation", false, 1f, 12f);
+        tonoExito = CreateTone(760f, 0.18f);
+        tonoTiempoAgotado = CreateTone(110f, 0.45f);
+        ConfigureGuidanceSource();
 
         if (clipRespiracion != null)
             respiracion.clip = clipRespiracion;
@@ -83,6 +102,7 @@ public class ImmersiveAudioController : MonoBehaviour
         respiracion.pitch = Mathf.Lerp(0.96f, 1.04f, breathingTarget);
         float breathingTime = respiracion != null && respiracion.clip != null ? respiracion.time : Time.time;
         ActualizarMovimientoCamara(breathingTarget, breathingTime);
+        ActualizarGuia3D();
 
         if (director != null && (!hasState || lastState != director.State))
         {
@@ -97,8 +117,26 @@ public class ImmersiveAudioController : MonoBehaviour
 
     void OnDisable()
     {
-        if (respiracion != null) respiracion.Stop();
-        if (navegacion != null) navegacion.Stop();
+        if (respiracion != null) respiracion.Pause();
+        if (navegacion != null) navegacion.Pause();
+        if (guiaRuta != null) guiaRuta.Pause();
+        foreach (AudioSource ambiente in fuentesAmbiente)
+            if (ambiente != null) ambiente.Pause();
+    }
+
+    void OnEnable()
+    {
+        if (respiracion != null && respiracion.clip != null) respiracion.UnPause();
+        foreach (AudioSource ambiente in fuentesAmbiente)
+            if (ambiente != null) ambiente.UnPause();
+    }
+
+    void OnDestroy()
+    {
+        if (objetoGuiaRuta != null) Destroy(objetoGuiaRuta);
+        if (tonoExito != null) Destroy(tonoExito);
+        if (tonoTiempoAgotado != null) Destroy(tonoTiempoAgotado);
+        if (tonoGuia != null) Destroy(tonoGuia);
     }
 
     AudioSource CreateSource(string name, bool spatial, float minDistance, float maxDistance)
@@ -127,8 +165,54 @@ public class ImmersiveAudioController : MonoBehaviour
         if (frequency <= 0f) return;
 
         navegacion.volume = volumenNavegacion;
-        navegacion.PlayOneShot(CreateTone(frequency, state == ResonanceMusicDirector.MusicState.TimeUp ? 0.45f : 0.18f));
+        navegacion.PlayOneShot(state == ResonanceMusicDirector.MusicState.TimeUp ? tonoTiempoAgotado : tonoExito);
         duckTimer = duracionDucking;
+    }
+
+    void ConfigureGuidanceSource()
+    {
+        if (!guia3DActiva) return;
+
+        objetoGuiaRuta = new GameObject("Route Guidance Beacon (3D)");
+        guiaRuta = objetoGuiaRuta.AddComponent<AudioSource>();
+        tonoGuia = CreateGuidanceClip();
+        guiaRuta.clip = tonoGuia;
+        guiaRuta.loop = true;
+        guiaRuta.playOnAwake = false;
+        guiaRuta.outputAudioMixerGroup = grupoSFX;
+        guiaRuta.spatialBlend = 1f;
+        // El proyecto no tiene un plugin HRTF configurado; Spatial Blend conserva la
+        // localización 3D nativa sin activar un procesador inexistente.
+        guiaRuta.spatialize = false;
+        guiaRuta.rolloffMode = AudioRolloffMode.Logarithmic;
+        guiaRuta.minDistance = distanciaMinimaGuia;
+        guiaRuta.maxDistance = distanciaMaximaGuia;
+        guiaRuta.dopplerLevel = 0f;
+        guiaRuta.volume = 0f;
+        guiaRuta.priority = 96;
+    }
+
+    void ActualizarGuia3D()
+    {
+        if (guiaRuta == null) return;
+
+        float target = 0f;
+        if (director != null && director.State == ResonanceMusicDirector.MusicState.OffRoute &&
+            director.TryGetGuidancePoint(out Vector3 point, out float lateral))
+        {
+            // La fuente queda en la ruta, para que dirección y distancia indiquen cómo volver.
+            guiaRuta.transform.position = point + Vector3.up * 0.5f;
+            float intensidad = Mathf.InverseLerp(1.2f, 4f, lateral);
+            target = volumenGuia3D * Mathf.SmoothStep(0f, 1f, intensidad);
+            guiaRuta.pitch = Mathf.Lerp(0.88f, 1.12f, intensidad);
+        }
+
+        guiaRuta.volume = Mathf.MoveTowards(guiaRuta.volume, target,
+            Time.deltaTime * volumenGuia3D / Mathf.Max(0.01f, fundidoGuia));
+
+        if (target > 0.001f && !guiaRuta.isPlaying) guiaRuta.UnPause();
+        if (target > 0.001f && !guiaRuta.isPlaying) guiaRuta.Play();
+        if (target <= 0.001f && guiaRuta.isPlaying && guiaRuta.volume <= 0.001f) guiaRuta.Pause();
     }
 
     void ActualizarMovimientoCamara(float breathingTarget, float breathingTime)
@@ -183,7 +267,9 @@ public class ImmersiveAudioController : MonoBehaviour
             source.minDistance = distanciaMinimaAmbiente;
             source.maxDistance = distanciaMaximaAmbiente;
             source.dopplerLevel = 0f;
+            source.priority = 160;
             source.Play();
+            fuentesAmbiente.Add(source);
         }
     }
 
@@ -261,6 +347,28 @@ public class ImmersiveAudioController : MonoBehaviour
         }
 
         var clip = AudioClip.Create("ProceduralMazeAmbience", samples, 1, sampleRate, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    static AudioClip CreateGuidanceClip()
+    {
+        const int sampleRate = 44100;
+        const float duration = 1.2f;
+        int samples = Mathf.RoundToInt(sampleRate * duration);
+        var data = new float[samples];
+
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)sampleRate;
+            // Dos pulsos suaves por ciclo: distinguibles sin competir con la música.
+            float local = t % 0.6f;
+            float envelope = local < 0.13f ? Mathf.Sin(local / 0.13f * Mathf.PI) : 0f;
+            float tone = Mathf.Sin(t * 2f * Mathf.PI * 420f);
+            data[i] = tone * envelope * 0.22f;
+        }
+
+        var clip = AudioClip.Create("RouteGuidance3D", samples, 1, sampleRate, false);
         clip.SetData(data, 0);
         return clip;
     }

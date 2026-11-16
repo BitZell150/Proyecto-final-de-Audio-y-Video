@@ -58,7 +58,13 @@ namespace Resonance
             // loop = true evita el caso en que Unity no reproduce con pitch negativo y loop desactivado.
             // El salto del loop lo evitamos nosotros con edgeMarginSeconds.
             source.loop = true;
-            source.spatialBlend = 0f; // música 2D
+            // La canción es la referencia temporal global del juego, no un objeto del mundo.
+            // Se mantiene explícitamente en 2D y fuera de las zonas de reverb 3D; los
+            // efectos narrativos de la música siguen viniendo exclusivamente del mixer.
+            source.spatialBlend = 0f;
+            source.spatialize = false;
+            source.dopplerLevel = 0f;
+            source.bypassReverbZones = true;
             source.clip = clip;
         }
 

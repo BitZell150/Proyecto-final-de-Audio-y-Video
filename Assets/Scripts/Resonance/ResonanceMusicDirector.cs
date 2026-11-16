@@ -76,11 +76,24 @@ namespace Resonance
         float playerSpeed;
         Vector3 lastPlayerPos;
         float lastLateral;
+        Vector3 lastRoutePoint;
+        bool hasRouteSample;
 
         // Línea temporal guardada: segundo de la canción por waypoint + la "punta" (punto más avanzado).
         float[] rec;
         int reachedIndex;
         float frontierProgress, frontierTime;
+
+        /// <summary>
+        /// Punto de la ruta más cercano calculado en el último frame. Se usa para
+        /// señales diegéticas 3D; no modifica ni espacializa la canción.
+        /// </summary>
+        public bool TryGetGuidancePoint(out Vector3 point, out float lateral)
+        {
+            point = lastRoutePoint;
+            lateral = lastLateral;
+            return hasRouteSample;
+        }
 
         void Start()
         {
@@ -125,6 +138,7 @@ namespace Resonance
             lastProgress = 0f;
             frontierProgress = 0f;
             frontierTime = 0f;
+            hasRouteSample = false;
             State = MusicState.Arming;
             running = true;
         }
@@ -164,6 +178,8 @@ namespace Resonance
             bool found = route.Project(p, lastProgress - searchWindow, lastProgress + searchWindow, out var s);
             float lateral = found ? s.lateral : float.MaxValue;
             lastLateral = lateral;
+            hasRouteSample = found;
+            if (found) lastRoutePoint = s.point;
 
             if (degradation != null)
                 degradation.Target = Mathf.InverseLerp(safeRadius, fullWrongRadius, lateral);

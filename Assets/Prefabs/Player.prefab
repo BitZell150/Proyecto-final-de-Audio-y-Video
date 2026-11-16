@@ -177,6 +177,11 @@ MonoBehaviour:
   volumenNavegacion: 0.3
   duracionDucking: 0.45
   duckingDb: -5
+  guia3DActiva: 1
+  volumenGuia3D: 0.12
+  distanciaMinimaGuia: 1.5
+  distanciaMaximaGuia: 14
+  fundidoGuia: 0.35
   ambientes: []
   puntosAmbiente: []
   distanciaMinimaAmbiente: 2
