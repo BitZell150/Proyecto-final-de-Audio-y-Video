@@ -18,7 +18,6 @@ public class PlayerMovement : MonoBehaviour
     [Header("Controles")]
     public InputActionReference moveAction;
     public InputActionReference jumpAction;
-    public InputActionReference interactAction;
 
     [Header("Pasos")]
     public AudioClip sonidoPasos;
@@ -65,14 +64,12 @@ public class PlayerMovement : MonoBehaviour
     {
         moveAction.action.Enable();
         jumpAction.action.Enable();
-        interactAction.action.Enable();
     }
 
     void OnDisable()
     {
         moveAction.action.Disable();
         jumpAction.action.Disable();
-        interactAction.action.Disable();
 
         // Pausa o pantalla final: el jugador deja de actuar, así que los pasos también.
         if (fuentePasos != null)
@@ -177,5 +174,14 @@ public class PlayerMovement : MonoBehaviour
 
         fuentePasos.pitch = Random.Range(1f - variacionPitchPasos, 1f + variacionPitchPasos);
         fuentePasos.PlayOneShot(clip);
+    }
+
+    void OnValidate()
+    {
+        if (controller == null) Debug.LogError("[PlayerMovement] Falta CharacterController.", this);
+        if (moveAction == null) Debug.LogError("[PlayerMovement] Falta Move Action.", this);
+        if (jumpAction == null) Debug.LogError("[PlayerMovement] Falta Jump Action.", this);
+        if (groundCheck == null) Debug.LogError("[PlayerMovement] Falta Ground Check.", this);
+        if (groundMask.value == 0) Debug.LogError("[PlayerMovement] Ground Mask no tiene ninguna capa asignada.", this);
     }
 }

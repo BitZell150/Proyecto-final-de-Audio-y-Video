@@ -180,7 +180,7 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
             fraseText.text = "Sigue la música, llega al corazón";
 
             OpcionesTitulo.text = "OPCIONES";
-            MusicaText.text = "Música";
+            MusicaText.text = "Volumen general";
             IdiomaText.text = "Idioma";
         }
         else // Inglés
@@ -192,7 +192,7 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
             fraseText.text = "Follow the music; it reaches the heart.";
 
             OpcionesTitulo.text = "OPTIONS";
-            MusicaText.text = "Music";
+            MusicaText.text = "Master volume";
             IdiomaText.text = "Language";
         }
     }
@@ -209,5 +209,16 @@ public class MenuSystem : MonoBehaviour, IMenuNavegable
         float volumen = volumenMusica.value;
         AudioListener.volume = volumen;
         PlayerPrefs.SetFloat("VolumenMusica", volumen);
+    }
+
+    void OnValidate()
+    {
+        if (panelMenuPrincipal == null) Debug.LogError("[MenuSystem] Falta Panel Menu Principal.", this);
+        if (opcionesPanel == null) Debug.LogError("[MenuSystem] Falta Opciones Panel.", this);
+        if (volumenMusica == null) Debug.LogError("[MenuSystem] Falta Volumen Musica (Slider).", this);
+        if (idiomaDropdown == null) Debug.LogError("[MenuSystem] Falta Idioma Dropdown.", this);
+        if (JugarText == null || OpcionesText == null || SalirText == null || fraseText == null ||
+            OpcionesTitulo == null || MusicaText == null || IdiomaText == null)
+            Debug.LogError("[MenuSystem] Faltan referencias de texto de la UI.", this);
     }
 }

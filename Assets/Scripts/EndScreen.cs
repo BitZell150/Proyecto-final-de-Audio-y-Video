@@ -263,4 +263,13 @@ public class EndScreen : MonoBehaviour, IMenuNavegable
         MenuUI.CrearBoton(estilo, rRaiz, "Reintentar", new Vector2(0f, -100f), Reintentar, out tReintentar, 640f);
         MenuUI.CrearBoton(estilo, rRaiz, "MenuPrincipal", new Vector2(0f, -240f), VolverAlMenuPrincipal, out tMenu, 640f);
     }
+
+    void OnValidate()
+    {
+        if (fuente == null) Debug.LogError("[EndScreen] Falta Fuente.", this);
+        if (fuenteTitulo == null) Debug.LogError("[EndScreen] Falta Fuente Titulo.", this);
+        if (spriteBoton == null) Debug.LogError("[EndScreen] Falta Sprite Boton.", this);
+        if (spriteFondo == null) Debug.LogError("[EndScreen] Falta Sprite Fondo.", this);
+        if (spriteNota == null) Debug.LogError("[EndScreen] Falta Sprite Nota.", this);
+    }
 }

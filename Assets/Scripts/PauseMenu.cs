@@ -224,7 +224,7 @@ public class PauseMenu : MonoBehaviour, IMenuNavegable
         tOpciones.text = es ? "Opciones" : "Options";
         tMenu.text = es ? "Menu principal" : "Main menu";
         tTituloOpciones.text = es ? "OPCIONES" : "OPTIONS";
-        tMusica.text = es ? "Musica" : "Music";
+        tMusica.text = es ? "Volumen general" : "Master volume";
         tIdioma.text = es ? "Idioma: ES" : "Language: EN";
         tVolver.text = es ? "Volver" : "Back";
     }
@@ -273,5 +273,14 @@ public class PauseMenu : MonoBehaviour, IMenuNavegable
         rt.anchoredPosition = Vector2.zero;
         MenuUI.Imagen(rt, spriteFondo, MenuUI.ColorPanel, true);
         return rt;
+    }
+
+    void OnValidate()
+    {
+        if (fuente == null) Debug.LogError("[PauseMenu] Falta Fuente.", this);
+        if (fuenteTitulo == null) Debug.LogError("[PauseMenu] Falta Fuente Titulo.", this);
+        if (spriteBoton == null) Debug.LogError("[PauseMenu] Falta Sprite Boton.", this);
+        if (spriteFondo == null) Debug.LogError("[PauseMenu] Falta Sprite Fondo.", this);
+        if (spriteKnob == null) Debug.LogError("[PauseMenu] Falta Sprite Knob.", this);
     }
 }

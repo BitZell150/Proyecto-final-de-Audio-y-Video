@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Resonance;
 
 public class ProgresoJugador : MonoBehaviour
 {
@@ -31,21 +32,39 @@ public class ProgresoJugador : MonoBehaviour
     float visible;
     int indice = 0;          // último waypoint alcanzado
     float maximo = 0f;
+    MazeRoute route;
 
     void Start()
     {
-        int n = correctRoute.childCount;
+        route = correctRoute != null ? correctRoute.GetComponent<MazeRoute>() : null;
+        if (route == null) route = FindAnyObjectByType<MazeRoute>();
+        if (route == null)
+        {
+            Debug.LogError("[ProgresoJugador] Falta MazeRoute. Asigna CorrectRoute con ese componente.", this);
+            enabled = false;
+            return;
+        }
+
+        route.Rebuild();
+        int n = route.WaypointCount;
+        if (n < 2 || route.Length <= 0f)
+        {
+            Debug.LogError("[ProgresoJugador] MazeRoute debe tener al menos dos waypoints.", this);
+            enabled = false;
+            return;
+        }
+
         acumulado = new float[n];
         for (int i = 1; i < n; i++)
         {
-            total += Vector3.Distance(correctRoute.GetChild(i - 1).position,
-                                      correctRoute.GetChild(i).position);
-            acumulado[i] = total;
+            acumulado[i] = route.CumulativeDistance(i);
         }
+        total = route.Length;
     }
 
     void Update()
     {
+        if (player == null) return;
         Progreso = CalcularProgreso(player.position);
         visible = Mathf.Lerp(visible, Progreso, Time.deltaTime * suavizado);
 
@@ -56,13 +75,13 @@ public class ProgresoJugador : MonoBehaviour
 
     float CalcularProgreso(Vector3 p)
     {
-        int ultimo = correctRoute.childCount - 1;
+        int ultimo = route.WaypointCount - 1;
 
         // 1) ¿Alcancé algún waypoint de los siguientes?
         int limite = Mathf.Min(ultimo, indice + waypointsAdelante);
         for (int k = limite; k > indice; k--)
         {
-            if (Vector3.Distance(p, correctRoute.GetChild(k).position) <= radioWaypoint)
+            if (Vector3.Distance(p, route.WaypointWorldPosition(k)) <= radioWaypoint)
             {
                 indice = k;
                 break;
@@ -72,13 +91,8 @@ public class ProgresoJugador : MonoBehaviour
         if (indice >= ultimo) return soloAvanzar ? (maximo = 1f) : 1f;
 
         // 2) Interpolar dentro del segmento indice -> indice+1
-        Vector3 a = correctRoute.GetChild(indice).position;
-        Vector3 b = correctRoute.GetChild(indice + 1).position;
-        Vector3 ab = b - a;
-        float len = ab.magnitude;
-        float t = len > 0.0001f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
-
-        float resultado = Mathf.Clamp01((acumulado[indice] + t * len) / total);
+        route.ProjectOnSegment(p, indice, out MazeRoute.Sample sample);
+        float resultado = Mathf.Clamp01(sample.progress / total);
 
         if (soloAvanzar)
         {
@@ -91,7 +105,8 @@ public class ProgresoJugador : MonoBehaviour
     // Llámalo desde tu EndScreen al ganar para asegurar 100%
     public void Completar()
     {
-        indice = correctRoute.childCount - 1;
+        if (route == null) return;
+        indice = route.WaypointCount - 1;
         maximo = 1f;
     }
 

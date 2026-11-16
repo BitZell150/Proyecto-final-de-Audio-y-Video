@@ -1,4 +1,5 @@
 using UnityEngine;
+using Resonance;
 
 public class NeonReactivo : MonoBehaviour
 {
@@ -58,9 +59,20 @@ public class NeonReactivo : MonoBehaviour
     MaterialPropertyBlock mpb;
     Color colorBueno;
     float error;
+    MazeRoute route;
 
     void Start()
     {
+        route = correctRoute != null ? correctRoute.GetComponent<MazeRoute>() : null;
+        if (route == null) route = FindAnyObjectByType<MazeRoute>();
+        if (route == null)
+        {
+            Debug.LogError("[NeonReactivo] Falta MazeRoute. Asigna CorrectRoute con ese componente.", this);
+            enabled = false;
+            return;
+        }
+        route.Rebuild();
+
         renders = GetComponentsInChildren<Renderer>();
         luces = GetComponentsInChildren<Light>();
         mpb = new MaterialPropertyBlock();
@@ -90,6 +102,7 @@ public class NeonReactivo : MonoBehaviour
 
     void Update()
     {
+        if (player == null) return;
         float d = DistanciaARuta(player.position);
         float objetivo = Mathf.Clamp01(d / distanciaMaxima);
         error = Mathf.Lerp(error, objetivo, Time.deltaTime * suavizado);
@@ -114,16 +127,6 @@ public class NeonReactivo : MonoBehaviour
 
     float DistanciaARuta(Vector3 p)
     {
-        float min = float.MaxValue;
-        for (int i = 0; i < correctRoute.childCount - 1; i++)
-        {
-            Vector3 a = correctRoute.GetChild(i).position;
-            Vector3 b = correctRoute.GetChild(i + 1).position;
-            Vector3 ab = b - a;
-            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude);
-            float dist = Vector3.Distance(p, a + ab * t);
-            if (dist < min) min = dist;
-        }
-        return min;
+        return route.Project(p, out MazeRoute.Sample sample) ? sample.lateral : float.MaxValue;
     }
 }

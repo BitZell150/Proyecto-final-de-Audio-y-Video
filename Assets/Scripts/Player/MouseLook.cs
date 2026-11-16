@@ -60,4 +60,11 @@ public class MouseLook : MonoBehaviour
         transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
         playerBody.Rotate(Vector3.up * lookX);
     }
+
+    void OnValidate()
+    {
+        if (lookAction == null) Debug.LogError("[MouseLook] Falta Look Action.", this);
+        if (playerBody == null) Debug.LogError("[MouseLook] Falta Player Body.", this);
+        if (GetComponent<Camera>() == null) Debug.LogError("[MouseLook] Este componente debe estar en la cámara del jugador.", this);
+    }
 }

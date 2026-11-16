@@ -59,6 +59,7 @@ public class MensajeInteraccion : MonoBehaviour
         }
 
         Instance = this;
+        ValidateStyle();
         ConstruirUI();
     }
 
@@ -140,5 +141,13 @@ public class MensajeInteraccion : MonoBehaviour
         EstiloUI estilo = new EstiloUI { fuente = fuente, spriteFondo = spriteFondo };
         texto = MenuUI.Texto(estilo, panel, "Texto", 44f, Vector2.zero, Vector2.zero);
         MenuUI.Estirar(texto.rectTransform);
+    }
+
+    void OnValidate() => ValidateStyle();
+
+    void ValidateStyle()
+    {
+        if (fuente == null) Debug.LogWarning("[MensajeInteraccion] Falta Fuente; se usará la fuente TMP por defecto.", this);
+        if (spriteFondo == null) Debug.LogWarning("[MensajeInteraccion] Falta Sprite Fondo; el panel se mostrará sin sprite.", this);
     }
 }

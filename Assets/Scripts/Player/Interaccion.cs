@@ -20,12 +20,16 @@ public class Interaccion : MonoBehaviour
 
     void OnEnable()
     {
-        if (interactAction != null) interactAction.action.performed += HandleInteraction;
+        if (interactAction == null) return;
+        interactAction.action.Enable();
+        interactAction.action.performed += HandleInteraction;
     }
 
     void OnDisable()
     {
-        if (interactAction != null) interactAction.action.performed -= HandleInteraction;
+        if (interactAction == null) return;
+        interactAction.action.performed -= HandleInteraction;
+        interactAction.action.Disable();
     }
 
     private void HandleInteraction(InputAction.CallbackContext context)
@@ -37,16 +41,30 @@ public class Interaccion : MonoBehaviour
         Debug.DrawRay(mainCamera.transform.position, mainCamera.transform.forward * interactionDistance, Color.red, 2f);
 
         Ray ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
-        RaycastHit hit;
+        // Las escenas actuales tienen Interactable Layer vacío; mantener este fallback
+        // conserva el comportamiento previo de los discos mientras se configura una capa dedicada.
+        int mask = interactableLayer.value == 0 ? Physics.DefaultRaycastLayers : interactableLayer.value;
+        RaycastHit[] hits = Physics.RaycastAll(ray, interactionDistance, mask, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
-        if (Physics.Raycast(ray, out hit, interactionDistance, interactableLayer))
+        foreach (RaycastHit hit in hits)
         {
+            // El propio jugador no bloquea el rayo; cualquier otro collider sí.
+            if (hit.collider.GetComponentInParent<PlayerMovement>() != null) continue;
+
             InteractableItem item = hit.collider.GetComponentInParent<InteractableItem>();
-            if (item != null)
-            {
-                item.PickUp();
-            }
+            if (item != null) item.TryPickUp(hit.distance);
+            return; // conserva la regla: solo el primer collider visible puede interactuarse.
         }
+    }
+
+    void OnValidate()
+    {
+        interactionDistance = Mathf.Max(0f, interactionDistance);
+        if (interactAction == null)
+            Debug.LogError("[Interaccion] Falta Interact Action.", this);
+        if (interactableLayer.value == 0)
+            Debug.LogWarning("[Interaccion] Interactable Layer está vacío; se usarán todas las capas por compatibilidad.", this);
     }
 
 }

@@ -60,6 +60,8 @@ namespace Resonance
         [SerializeField] float retreatExitDistance = 1f;
         [SerializeField] float reverseGain = 6f;
         [SerializeField] float maxReverseRate = 2.5f;
+        [Tooltip("Al reingresar desde fuera de ruta, avance requerido antes de volver a permitir backtracking.")]
+        [SerializeField] float reentryAdvanceBeforeRetreat = 1f;
 
         [Header("Eventos")]
         [SerializeField] UnityEvent onMazeCompleted;
@@ -71,8 +73,9 @@ namespace Resonance
         public MusicState State { get; private set; } = MusicState.Arming;
 
         bool running, onRoute, retreating, timeUpPending;
+        bool retreatLockedAfterReentry;
         float lastProgress;
-        float retreatTimer, retreatLowest;
+        float retreatTimer, retreatLowest, reentryProgress;
         float playerSpeed;
         Vector3 lastPlayerPos;
         float lastLateral;
@@ -133,6 +136,7 @@ namespace Resonance
             timeUpPending = false;
             onRoute = false;
             retreating = false;
+            retreatLockedAfterReentry = false;
             retreatTimer = 0f;
             retreatLowest = 0f;
             lastProgress = 0f;
@@ -235,6 +239,20 @@ namespace Resonance
         {
             lastProgress = p;
 
+            // Reingresar desde un pasillo incorrecto no debe contar como un retroceso.
+            // La ruta debe avanzarse de nuevo antes de rearmar el detector normal.
+            if (retreatLockedAfterReentry)
+            {
+                if (p < reentryProgress + reentryAdvanceBeforeRetreat)
+                {
+                    song.SetDesiredRate(moving ? 1f : 0f);
+                    State = moving ? MusicState.Advancing : MusicState.Stopped;
+                    return;
+                }
+
+                retreatLockedAfterReentry = false;
+            }
+
             if (!retreating)
             {
                 if (p > frontierProgress)
@@ -289,6 +307,8 @@ namespace Resonance
             retreatTimer = 0f;
             lastProgress = progress;
             SetHead(progress);
+            reentryProgress = progress;
+            retreatLockedAfterReentry = true;
         }
 
         // ------------------------------------------------------------ LÍNEA TEMPORAL GUARDADA
@@ -371,6 +391,7 @@ namespace Resonance
             retreatExitDistance = Mathf.Max(0f, retreatExitDistance);
             reverseGain = Mathf.Max(0f, reverseGain);
             maxReverseRate = Mathf.Max(0f, maxReverseRate);
+            reentryAdvanceBeforeRetreat = Mathf.Max(0f, reentryAdvanceBeforeRetreat);
         }
 
         // ------------------------------------------------------------ DEBUG

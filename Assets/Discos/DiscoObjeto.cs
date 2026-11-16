@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(Collider))]
@@ -18,7 +17,7 @@ public class InteractableItem : MonoBehaviour
     public string escenaDestino = "";
 
     [Header("Interacción")]
-    [Tooltip("Distancia máxima (m) desde la cámara para poder agarrar el disco con E / X (mando).")]
+    [Tooltip("Alcance específico de este tipo de objeto. Interaccion conserva la línea de visión y aplica este límite.")]
     public float distanciaInteraccion = 1f;
 
     [Header("Mensaje al acercarse")]
@@ -50,13 +49,19 @@ public class InteractableItem : MonoBehaviour
         transform.Rotate(rotationSpeed * Time.deltaTime, Space.Self);
 
         MostrarMensajeSiEstaCerca();
+    }
 
-        // El disco detecta por sí mismo la tecla E o el botón X del mando (Xbox) y comprueba que el
-        // jugador lo esté mirando. Así no depende del LayerMask del componente Interaccion.
-        if (Time.frameCount != frameActivado && PulsoInteractuar() && JugadorPuedeInteractuar() && JugadorMiraEsteDisco())
-        {
-            PickUp();
-        }
+    /// <summary>
+    /// Recibe la interacción ya validada por Interaccion. El disco conserva su propio
+    /// alcance y rechaza el mismo frame en que fue activado por otro disco.
+    /// </summary>
+    public bool TryPickUp(float distanciaDesdeCamara)
+    {
+        if (recogido || Time.frameCount == frameActivado || distanciaDesdeCamara > distanciaInteraccion)
+            return false;
+
+        PickUp();
+        return true;
     }
 
     public void PickUp()
@@ -110,16 +115,6 @@ public class InteractableItem : MonoBehaviour
         if (distancia <= distanciaMensaje) MensajeInteraccion.Solicitar(distancia, nombreCancion);
     }
 
-    static bool PulsoInteractuar()
-    {
-        Keyboard teclado = Keyboard.current;
-        Gamepad mando = Gamepad.current;
-
-        // En un mando de Xbox el botón X es buttonWest.
-        return (teclado != null && teclado.eKey.wasPressedThisFrame)
-            || (mando != null && mando.buttonWest.wasPressedThisFrame);
-    }
-
     // No se puede agarrar con el juego en pausa o con una pantalla final abierta (el jugador está desactivado).
     bool JugadorPuedeInteractuar()
     {
@@ -127,22 +122,4 @@ public class InteractableItem : MonoBehaviour
         return jugador != null && jugador.enabled;
     }
 
-    bool JugadorMiraEsteDisco()
-    {
-        Camera camara = Camera.main;
-        if (camara == null) return false;
-
-        Ray rayo = new Ray(camara.transform.position, camara.transform.forward);
-        RaycastHit[] impactos = Physics.RaycastAll(rayo, distanciaInteraccion, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        System.Array.Sort(impactos, (a, b) => a.distance.CompareTo(b.distance));
-
-        foreach (RaycastHit impacto in impactos)
-        {
-            // El propio jugador no cuenta; lo primero que se vea por delante es el objetivo.
-            if (impacto.collider.GetComponentInParent<PlayerMovement>() != null) continue;
-            return impacto.collider.GetComponentInParent<InteractableItem>() == this;
-        }
-
-        return false;
-    }
 }
