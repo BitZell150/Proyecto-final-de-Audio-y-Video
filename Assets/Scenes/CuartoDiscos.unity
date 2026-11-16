@@ -371,6 +371,10 @@ PrefabInstance:
       value: Laberinto2Disco
       objectReference: {fileID: 0}
     - target: {fileID: 2072418575854221751, guid: 6a06b99a9c80453448dbec80dec47f8d, type: 3}
+      propertyPath: nombreCancion
+      value: De musica ligera - Soda estereo
+      objectReference: {fileID: 0}
+    - target: {fileID: 2072418575854221751, guid: 6a06b99a9c80453448dbec80dec47f8d, type: 3}
       propertyPath: nextItemToSpawn
       value: 
       objectReference: {fileID: 0}
@@ -1204,6 +1208,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 7977529559174599, guid: cfb5cbd5a1611d041a8c29cb408ab036, type: 3}
+      propertyPath: m_Layer
+      value: 6
+      objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: cfb5cbd5a1611d041a8c29cb408ab036, type: 3}
       propertyPath: m_LocalScale.x
       value: 34.975822
@@ -1313,6 +1321,10 @@ PrefabInstance:
       value: Laberinto1Disco
       objectReference: {fileID: 0}
     - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
+      propertyPath: nombreCancion
+      value: Billie Jean - Michael Jackson
+      objectReference: {fileID: 0}
+    - target: {fileID: 600840153344054754, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
       propertyPath: nextItemToSpawn
       value: 
       objectReference: {fileID: 252742153}
@@ -1377,6 +1389,55 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5b660b2db2693fc4f9e6227604e4514b, type: 3}
+--- !u!1 &1949500041
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1949500042}
+  - component: {fileID: 1949500043}
+  m_Layer: 0
+  m_Name: MensajeInteraccion
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1949500042
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1949500041}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1949500043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1949500041}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1f84c0e7a3d49d2a6c5e8f01d7b3a94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MensajeInteraccion
+  fuente: {fileID: 11400000, guid: eb58b557d8013f249be81b31a29ffabc, type: 2}
+  spriteFondo: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  botonTeclado: E
+  botonMando: X
+  duracionFade: 0.15
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1389,3 +1450,4 @@ SceneRoots:
   - {fileID: 1998428890}
   - {fileID: 1792993429}
   - {fileID: 1759191046}
+  - {fileID: 1949500042}
