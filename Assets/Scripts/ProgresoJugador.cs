@@ -11,15 +11,26 @@ public class ProgresoJugador : MonoBehaviour
     public TextMeshProUGUI textoPorcentaje;
 
     [Header("Estilo")]
-    public Color colorInicio = new Color(1f, 0.2f, 0.8f);   // rosa
-    public Color colorFinal = new Color(1f, 0.85f, 0.2f);   // dorado
+    public Color colorInicio = new Color(1f, 0.2f, 0.8f);
+    public Color colorFinal = new Color(1f, 0.85f, 0.2f);
     public float suavizado = 5f;
 
-    public float Progreso { get; private set; }   // 0 a 1, otros scripts pueden leerlo
+    [Header("Seguimiento de ruta")]
+    [Tooltip("Distancia a un waypoint para considerarlo alcanzado")]
+    public float radioWaypoint = 4f;
+    [Tooltip("Cuántos waypoints adelante puede detectar (tolera waypoints omitidos)")]
+    public int waypointsAdelante = 3;
+    [Tooltip("Si es true, el progreso nunca baja")]
+    public bool soloAvanzar = true;
+    public bool mostrarGizmos = true;
+
+    public float Progreso { get; private set; }
 
     float[] acumulado;
     float total;
     float visible;
+    int indice = 0;          // último waypoint alcanzado
+    float maximo = 0f;
 
     void Start()
     {
@@ -45,23 +56,54 @@ public class ProgresoJugador : MonoBehaviour
 
     float CalcularProgreso(Vector3 p)
     {
-        float minDist = float.MaxValue;
-        float mejor = 0f;
+        int ultimo = correctRoute.childCount - 1;
 
-        for (int i = 0; i < correctRoute.childCount - 1; i++)
+        // 1) ¿Alcancé algún waypoint de los siguientes?
+        int limite = Mathf.Min(ultimo, indice + waypointsAdelante);
+        for (int k = limite; k > indice; k--)
         {
-            Vector3 a = correctRoute.GetChild(i).position;
-            Vector3 b = correctRoute.GetChild(i + 1).position;
-            Vector3 ab = b - a;
-            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude);
-            float dist = Vector3.Distance(p, a + ab * t);
-
-            if (dist < minDist)
+            if (Vector3.Distance(p, correctRoute.GetChild(k).position) <= radioWaypoint)
             {
-                minDist = dist;
-                mejor = acumulado[i] + t * ab.magnitude;
+                indice = k;
+                break;
             }
         }
-        return Mathf.Clamp01(mejor / total);
+
+        if (indice >= ultimo) return soloAvanzar ? (maximo = 1f) : 1f;
+
+        // 2) Interpolar dentro del segmento indice -> indice+1
+        Vector3 a = correctRoute.GetChild(indice).position;
+        Vector3 b = correctRoute.GetChild(indice + 1).position;
+        Vector3 ab = b - a;
+        float len = ab.magnitude;
+        float t = len > 0.0001f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+
+        float resultado = Mathf.Clamp01((acumulado[indice] + t * len) / total);
+
+        if (soloAvanzar)
+        {
+            maximo = Mathf.Max(maximo, resultado);
+            return maximo;
+        }
+        return resultado;
+    }
+
+    // Llámalo desde tu EndScreen al ganar para asegurar 100%
+    public void Completar()
+    {
+        indice = correctRoute.childCount - 1;
+        maximo = 1f;
+    }
+
+    void OnDrawGizmos()
+    {
+        if (!mostrarGizmos || correctRoute == null) return;
+        Gizmos.color = Color.cyan;
+        for (int i = 0; i < correctRoute.childCount; i++)
+        {
+            Vector3 pos = correctRoute.GetChild(i).position;
+            Gizmos.DrawWireSphere(pos, radioWaypoint);
+            if (i > 0) Gizmos.DrawLine(correctRoute.GetChild(i - 1).position, pos);
+        }
     }
 }

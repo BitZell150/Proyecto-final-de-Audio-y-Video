@@ -21,9 +21,21 @@ public class InteractableItem : MonoBehaviour
     [Tooltip("Distancia máxima (m) desde la cámara para poder agarrar el disco con E / X (mando).")]
     public float distanciaInteraccion = 1f;
 
+    [Header("Mensaje al acercarse")]
+    [Tooltip("Nombre de la canción que muestra el mensaje \"Presiona [E / X] para jugar: ...\". Vacío = sin mensaje.")]
+    public string nombreCancion = "";
+    [Tooltip("Distancia (m) a la que aparece el mensaje al acercarse al disco.")]
+    public float distanciaMensaje = 1f;
+
     bool recogido;
     int frameActivado;
     PlayerMovement jugador;
+    Collider colision;
+
+    void Awake()
+    {
+        colision = GetComponent<Collider>();
+    }
 
     void OnEnable()
     {
@@ -36,6 +48,8 @@ public class InteractableItem : MonoBehaviour
     {
         // Rotación constante sobre su propio eje en tiempo local
         transform.Rotate(rotationSpeed * Time.deltaTime, Space.Self);
+
+        MostrarMensajeSiEstaCerca();
 
         // El disco detecta por sí mismo la tecla E o el botón X del mando (Xbox) y comprueba que el
         // jugador lo esté mirando. Así no depende del LayerMask del componente Interaccion.
@@ -76,6 +90,24 @@ public class InteractableItem : MonoBehaviour
     void OnValidate()
     {
         distanciaInteraccion = Mathf.Max(0f, distanciaInteraccion);
+        distanciaMensaje = Mathf.Max(0f, distanciaMensaje);
+    }
+
+    // Pide el mensaje emergente mientras el jugador esté cerca (se muestra en pausa/pantallas finales: no).
+    void MostrarMensajeSiEstaCerca()
+    {
+        if (string.IsNullOrEmpty(nombreCancion) || !JugadorPuedeInteractuar()) return;
+
+        Camera camara = Camera.main;
+        if (camara == null) return;
+
+        Vector3 desde = camara.transform.position;
+        bool colisionUsable = colision != null && !(colision is MeshCollider malla && !malla.convex);
+        float distancia = colisionUsable
+            ? Vector3.Distance(desde, colision.ClosestPoint(desde))
+            : Vector3.Distance(desde, transform.position);
+
+        if (distancia <= distanciaMensaje) MensajeInteraccion.Solicitar(distancia, nombreCancion);
     }
 
     static bool PulsoInteractuar()
