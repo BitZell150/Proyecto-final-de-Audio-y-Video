@@ -15,7 +15,9 @@ public class Interaccion : MonoBehaviour
 
     void Start()
     {
-        mainCamera = Camera.main;
+        // Se respeta la cámara asignada en el Inspector; Camera.main solo es el respaldo
+        // (si hay varias cámaras con la etiqueta MainCamera devuelve una cualquiera).
+        if (mainCamera == null) mainCamera = Camera.main;
     }
 
     void OnEnable()
